@@ -44,7 +44,7 @@ ensure_forward() {
     if curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then return; fi
     sleep 0.5
   done
-  echo "port-forward did not become ready: ${url}" >&2
+  echo "端口转发未就绪：${url}" >&2
   return 1
 }
 
@@ -74,16 +74,16 @@ if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
   fi
 fi
 
-echo '== Kubernetes and Gateway API =='
+echo '== Kubernetes 与 Gateway API =='
 "${K[@]}" get --raw /apis/metrics.k8s.io/v1beta1 >/dev/null
-echo 'metrics-server API: OK'
+echo 'metrics-server API：正常'
 "${K[@]}" -n kube-system get daemonset/cilium deployment/cilium-operator
 if ! cilium_pod="$(${K[@]} -n kube-system get pod -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')" || [[ -z "${cilium_pod}" ]] ||
   ! "${K[@]}" -n kube-system exec "${cilium_pod}" -- cilium-dbg status --brief 2>/dev/null | grep -q '^OK'; then
-  echo 'Cilium agent health check failed' >&2
+  echo 'Cilium agent 健康检查失败' >&2
   exit 1
 fi
-echo 'Cilium agent health: OK'
+echo 'Cilium agent 健康状态：正常'
 "${K[@]}" -n envoy-gateway-system get deployment/envoy-gateway
 "${K[@]}" get gatewayclass envoy-gateway
 "${K[@]}" get crd gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io
@@ -92,7 +92,7 @@ echo 'Cilium agent health: OK'
 envoy_replicas="$(${K[@]} -n envoy-gateway-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{.items[0].spec.replicas}')"
 envoy_ready_replicas="$(${K[@]} -n envoy-gateway-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{.items[0].status.readyReplicas}')"
 [[ "${envoy_replicas}" =~ ^[2-9][0-9]*$ ]] && [[ "${envoy_ready_replicas}" == "${envoy_replicas}" ]]
-echo "Envoy Gateway proxy replicas: ${envoy_ready_replicas}/${envoy_replicas}"
+echo "Envoy Gateway 代理副本：${envoy_ready_replicas}/${envoy_replicas}"
 "${K[@]}" get gatewayclass envoy-gateway -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
 "${K[@]}" -n "${NAMESPACE}" get gateway public -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Programmed=True'
 "${K[@]}" -n "${NAMESPACE}" get httproute gofr-demo -o jsonpath='{range .status.parents[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
@@ -107,8 +107,8 @@ if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
     -H 'Access-Control-Request-Method: POST' \
     -H 'Access-Control-Request-Headers: content-type,authorization' \
     http://127.0.0.1:14318/v1/traces | grep -qi 'access-control-allow-origin'
-  echo 'HyperDX local UI/API: OK'
-  echo 'HyperDX browser OTLP CORS: OK'
+  echo 'HyperDX 本地 UI/API：正常'
+  echo 'HyperDX 浏览器 OTLP CORS：正常'
 fi
 curl --noproxy '*' --fail --silent http://127.0.0.1:18080/ >/dev/null
 curl --noproxy '*' --fail --silent \
@@ -118,11 +118,11 @@ curl --noproxy '*' --fail --silent \
   -H 'x-cluster-name: in-cluster' \
   http://127.0.0.1:18080/api/v1/gateways/_all | grep -q '"kind":"Gateway"'
 curl --noproxy '*' --fail --silent http://127.0.0.1:19090/-/ready | grep -q Prometheus
-echo 'Kite and Prometheus: OK'
+echo 'Kite 和 Prometheus：正常'
 "${K[@]}" -n "${NAMESPACE}" get hpa -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.status.currentReplicas}{"/"}{.status.desiredReplicas}{"\n"}{end}'
 "${K[@]}" -n "${NAMESPACE}" get hpa -o jsonpath='{range .items[*]}{.status.currentReplicas}{"\n"}{end}' | grep -q '[0-9]'
 
-echo '== HTTP and trace-producing request =='
+echo '== HTTP 与链路生成请求 =='
 curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:8080/ | grep -q 'id="app"'
 catalog_response="$(curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:8080/api/catalog/sku-001)"
 printf '%s' "${catalog_response}" | grep -q 'sku-001'
@@ -139,18 +139,18 @@ curl --noproxy '*' --fail --silent --show-error -H 'content-type: application/js
 delete_status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' -X DELETE \
   "http://127.0.0.1:8080/api/orders/${created_id}")"
 [[ "${delete_status}" == 204 ]]
-echo 'Gateway API end-to-end route: OK'
+echo 'Gateway API 端到端路由：正常'
 
-echo '== GoFr metrics =='
+echo '== GoFr 指标 =='
 "${K[@]}" -n "${NAMESPACE}" port-forward service/orders 2123:2121 >/tmp/gofr-orders-metrics.log 2>&1 & METRICS_PID=$!
 sleep 2
 metrics_output="$(mktemp)"
 curl --noproxy '*' --fail --silent http://127.0.0.1:2123/metrics -o "${metrics_output}"
 grep -q 'app_http_response' "${metrics_output}"
 rm -f "${metrics_output}"
-echo 'GoFr metrics: OK'
+echo 'GoFr 指标：正常'
 
-echo '== Prometheus scrape targets =='
+echo '== Prometheus 抓取目标 =='
 prometheus_targets=''
 prometheus_metric=''
 collector_metric=''
@@ -183,12 +183,12 @@ printf '%s' "${recorded_metric}" | grep -q '"result":\[[^]]'
 prometheus_rules="$(curl --noproxy '*' --silent --show-error --fail \
   http://127.0.0.1:19090/api/v1/rules 2>/dev/null || true)"
 printf '%s' "${prometheus_rules}" | grep -q 'gofr'
-echo 'Prometheus application targets and GoFr histogram: OK'
+echo 'Prometheus 应用目标和 GoFr 直方图：正常'
 
 echo '== HyperDX Collector =='
 collector_tail="$("${K[@]}" -n "${NAMESPACE}" logs deploy/otel-collector --tail=50)"
 printf '%s' "${collector_tail}" | grep -qE 'Traces|Metrics|Logs|export' || true
-echo 'Collector is running; inspect HyperDX for the trace and session replay.'
+echo 'Collector 正在运行；请在 HyperDX 中查看链路和会话回放。'
 if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
   traces_count='0'
   logs_count='0'
@@ -241,5 +241,5 @@ if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
   printf '%s' "${hyperdx_ui_result}" | grep -q '"rows": 1'
   "${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
     "EXISTS TABLE default.hyperdx_sessions" | grep -q '^1$'
-  echo "HyperDX stored signals: traces=${traces_count} logs=${logs_count} POST /api/orders=${order_spans_count}; authenticated UI query API: OK; session replay table: OK"
+  echo "HyperDX 已存储信号：traces=${traces_count} logs=${logs_count} POST /api/orders=${order_spans_count}；认证 UI 查询 API：正常；会话回放表：正常"
 fi

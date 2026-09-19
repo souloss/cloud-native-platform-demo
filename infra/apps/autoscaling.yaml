@@ -1,5 +1,4 @@
-# Availability and elasticity are declared beside the workload definitions so
-# a rollout, voluntary eviction and HPA decision share the same contract.
+# 可用性和弹性与工作负载定义放在一起，使滚动发布、自愿驱逐和 HPA 决策共享同一契约。
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata: { name: catalog, namespace: gofr-demo }

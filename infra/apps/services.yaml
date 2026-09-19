@@ -1,6 +1,5 @@
-# Stateless application workloads. The common labels, rolling-update policy,
-# topology spread and probes are part of the workload contract; keep them here
-# rather than duplicating deployment behavior in the startup script.
+# 无状态应用工作负载。通用标签、滚动更新策略、拓扑分布和探针都是工作负载契约的一部分；
+# 将它们集中在这里，避免在启动脚本中重复部署行为。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -168,11 +167,9 @@ spec:
           startupProbe: { httpGet: { path: /, port: http }, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 2 }
           readinessProbe: { httpGet: { path: /, port: http }, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3 }
           livenessProbe: { httpGet: { path: /, port: http }, initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 }
-          # The stock nginx entrypoint fixes ownership of its cache directory
-          # before binding the unprivileged 8080 listener. Keep the image's
-          # default capability set for that initialization, while disabling
-          # privilege escalation; a future hardened image can drop all caps
-          # after moving this chown step into its build stage.
+          # 官方 nginx 入口脚本会在绑定非特权 8080 监听器前修复缓存目录所有权。
+          # 初始化阶段保留镜像默认能力集，同时关闭权限提升；未来将 chown 步骤移到
+          # 构建阶段后，可以再使用强化镜像删除全部能力。
           securityContext: { allowPrivilegeEscalation: false }
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
 ---

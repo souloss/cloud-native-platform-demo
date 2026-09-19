@@ -1,6 +1,5 @@
-# Envoy Gateway is the Gateway API controller. It owns Envoy proxy Deployments
-# created for Gateway resources; the application Gateway uses a ClusterIP
-# service and is exposed only through kubectl port-forward by scripts/up.sh.
+# Envoy Gateway 是 Gateway API 控制器，负责为 Gateway 资源创建的 Envoy 代理 Deployment；
+# 应用 Gateway 使用 ClusterIP Service，只由 scripts/up.sh 通过 kubectl port-forward 暴露。
 config:
   envoyGateway:
     gateway:

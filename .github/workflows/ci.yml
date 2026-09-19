@@ -1,4 +1,4 @@
-name: quality
+name: 质量门禁
 
 on:
   push:

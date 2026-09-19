@@ -1,18 +1,16 @@
-# Cilium is the cluster CNI and service dataplane for the k3d demo.
-# The cluster itself is created with Flannel and k3s network policy disabled.
+# Cilium 是 k3d 演示的集群 CNI 和服务数据面。
+# 集群创建时已关闭 Flannel 和 k3s 网络策略。
 operator:
   replicas: 1
 ipam:
   mode: kubernetes
-# k3s kube-proxy remains enabled for the default k3d profile. This is a
-# deliberate compatibility choice: k3s owns the service VIP path while
-# Cilium supplies the CNI, policy engine, Hubble and eBPF datapath around it.
-# kubeProxyReplacement=true is supported by Cilium, but requires a fresh
-# kube-proxy-free cluster and additional host/API reachability settings; it is
-# not the validated default for this k3d teaching profile.
+# 默认 k3d 配置仍启用 k3s kube-proxy。这是刻意的兼容性选择：k3s 负责服务 VIP 路径，
+# Cilium 在外围提供 CNI、策略引擎、Hubble 和 eBPF 数据路径。
+# Cilium 支持 kubeProxyReplacement=true，但需要全新的无 kube-proxy 集群以及额外的
+# 主机/API 可达性配置；它不是本 k3d 教学配置经过验证的默认值。
 kubeProxyReplacement: false
-# scripts/up.sh sets these from the current k3d server address so the values
-# file also works when Docker allocates a different bridge subnet.
+# scripts/up.sh 会根据当前 k3d server 地址设置这些值，因此即使 Docker 分配了不同的
+# bridge 子网，该 values 文件也可以工作。
 routingMode: tunnel
 tunnelProtocol: vxlan
 l7Proxy: true

@@ -39,11 +39,11 @@ spec:
             - { name: HYPERDX_API_PORT, value: "8000" }
             - { name: HYPERDX_APP_PORT, value: "8080" }
             - { name: HYPERDX_APP_URL, value: "http://localhost:18081" }
-            # Keep local UI redirects on the HyperDX origin.
+            # 将本地 UI 重定向保持在 HyperDX 来源域。
             - { name: FRONTEND_URL, value: "http://localhost:18081" }
             - { name: HYPERDX_LOG_LEVEL, value: info }
             - { name: USAGE_STATS_ENABLED, value: "false" }
-            # HyperDX v2 requires a key that decodes to exactly 32 bytes.
+            # HyperDX v2 要求该密钥解码后恰好为 32 字节。
             - { name: TOKEN_ENCRYPTION_KEY, value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
             - { name: INGESTION_API_KEY, valueFrom: { secretKeyRef: { name: hyperdx-local, key: ingestion-api-key } } }
           ports:

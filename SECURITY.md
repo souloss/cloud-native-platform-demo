@@ -1,18 +1,16 @@
-# Security Notes
+# 安全说明
 
-This repository is a local teaching/demo project, not a production deployment
-package. The checked-in Kubernetes manifests intentionally contain throwaway
-credentials so a fresh k3d cluster can start without extra provisioning.
+本仓库是本地教学/演示项目，不是生产部署软件包。仓库中的 Kubernetes 清单刻意包含
+一次性凭据，以便全新的 k3d 集群无需额外配置即可启动。
 
-Before using any part of this project outside a disposable workstation:
+在任何非一次性工作站环境中使用本项目的全部或部分内容前，请完成以下事项：
 
-- replace every demo password, JWT secret, encryption key and ingestion key;
-- disable Kite anonymous access and use an external identity provider;
-- inject secrets through a managed secret store rather than Git or inline YAML;
-- pin all images and Helm charts by reviewed release or digest;
-- put the Gateway behind TLS, authentication, rate limits and network policy;
-- use a supported storage class with backups and restore tests for stateful data.
+- 替换所有演示密码、JWT Secret、加密密钥和数据写入密钥；
+- 关闭 Kite 匿名访问并接入外部身份提供商；
+- 通过托管密钥存储注入 Secret，不要将密钥放在 Git 或内联 YAML 中；
+- 按经过审核的 release 或 digest 固定所有镜像和 Helm chart；
+- 为 Gateway 配置 TLS、身份认证、限流和网络策略；
+- 为有状态数据使用受支持的存储类，并完成备份与恢复演练。
 
-Do not report the local demo credentials as a vulnerability. Report accidentally
-committed real credentials or a reproducible security issue through the private
-channel configured by the repository owner.
+本地演示凭据本身不应被报告为安全漏洞。若发现误提交的真实凭据或可复现的安全问题，
+请通过仓库所有者配置的私密渠道报告。

@@ -1,6 +1,5 @@
-# Stateful demo dependencies. They deliberately stay single-replica and
-# local-path-backed for k3d; probes and graceful termination still model the
-# readiness contract that a managed production database would expose.
+# 有状态演示依赖。它们在 k3d 中刻意保持单副本并使用 local-path；探针和优雅终止仍然
+# 模拟托管生产数据库应提供的就绪契约。
 apiVersion: v1
 kind: Secret
 metadata:

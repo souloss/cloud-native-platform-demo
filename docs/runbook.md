@@ -1,54 +1,51 @@
-# Local Runbook
+# 本地运行手册
 
-## Lifecycle
+## 生命周期
 
 ```bash
-make up       # create/update the k3d cluster and deploy all layers
-make verify   # run the acceptance path, CRUD checks and telemetry checks
-make status   # inspect workloads and Gateway API state
-make down     # stop forwards and delete only the gofr-demo k3d cluster
+make up       # 创建或更新 k3d 集群并部署所有层
+make verify   # 执行验收路径、CRUD 检查和遥测检查
+make status   # 查看工作负载和 Gateway API 状态
+make down     # 停止端口转发并删除 gofr-demo k3d 集群
 ```
 
-`make up` defaults to `MODE=k3d` and does not install or modify a host k3s
-systemd service. To use an existing host installation explicitly set
-`MODE=host-k3s`; the corresponding `make down` then removes that host k3s
-installation, so treat it as a destructive development option.
+`make up` 默认使用 `MODE=k3d`，不会安装或修改宿主机上的 k3s systemd 服务。若要使用
+已有的宿主机安装，请显式设置 `MODE=host-k3s`；对应的 `make down` 会移除该宿主机 k3s
+安装，因此应把它视为具有破坏性的开发选项。
 
-## Endpoints
+## 访问地址
 
-| Surface | Local address |
+| 入口 | 本地地址 |
 | --- | --- |
-| Application Gateway | <http://127.0.0.1:8080> |
+| 应用 Gateway | <http://127.0.0.1:8080> |
 | Kite | <http://127.0.0.1:18080> |
 | Prometheus | <http://127.0.0.1:19090> |
 | HyperDX UI/API | <http://localhost:18081> |
 | HyperDX OTLP HTTP | <http://127.0.0.1:14318> |
 | HyperDX OTLP gRPC | `127.0.0.1:14317` |
 
-Use `localhost` for HyperDX UI/API because its local authentication cookie and
-CORS origin are configured for that hostname.
+HyperDX UI/API 的本地认证 Cookie 和 CORS 来源域按 `localhost` 配置，因此访问它时必须
+使用 `localhost`。
 
-On a fresh local HyperDX volume, `make up` creates the demo account from
-`HYPERDX_DEMO_EMAIL` and `HYPERDX_DEMO_PASSWORD`. It never changes users in an
-existing volume.
+在全新的本地 HyperDX volume 中，`make up` 会根据 `HYPERDX_DEMO_EMAIL` 和
+`HYPERDX_DEMO_PASSWORD` 创建演示账号；已有 volume 中的用户不会被修改。
 
-The project owns the k3d cluster named `gofr-demo` and the port-forwards listed
-above. `make down` removes those resources only; it deliberately does not stop
-unrelated Docker containers or host services. This makes cleanup safe on a
-developer workstation that is running other projects.
+项目只负责名为 `gofr-demo` 的 k3d 集群以及上表中的端口转发。`make down` 只删除这些
+资源，刻意不会停止无关的 Docker 容器或宿主机服务，因此在同时运行其他项目的开发工作站
+上也可以安全清理。
 
-## Acceptance matrix
+## 验收矩阵
 
-`make verify` checks the following contracts:
+`make verify` 会检查以下契约：
 
-1. Kubernetes metrics, Cilium health and Gateway API conditions.
-2. Envoy proxy replicas, application/data/observability workloads and HPAs.
-3. Kite and Prometheus availability.
-4. Web delivery and catalog/order CRUD through the Gateway.
-5. GoFr Prometheus metrics and OpenTelemetry signals in HyperDX.
-6. Prometheus recording rules and the collector's own telemetry endpoint.
+1. Kubernetes 指标、Cilium 健康状态和 Gateway API 条件。
+2. Envoy 代理副本、应用/数据/可观测性工作负载和 HPA。
+3. Kite 与 Prometheus 的可用性。
+4. 通过 Gateway 完成 Web 交付以及 catalog/order CRUD。
+5. GoFr Prometheus 指标和 HyperDX 中的 OpenTelemetry 信号。
+6. Prometheus recording rule 和 Collector 自身的遥测端点。
 
-Useful PromQL after `make verify`:
+`make verify` 完成后可以使用以下 PromQL：
 
 ```promql
 gofr:http_responses:rate5m
@@ -56,15 +53,14 @@ gofr:http_response_duration_seconds:p95
 sum by (operation, result) (rate(catalog_cache_operations_total[5m]))
 ```
 
-The script creates temporary verification port-forwards and removes them on
-exit. The persistent forwards created by `make up` remain until `make down`.
+脚本会创建临时验收端口转发，并在退出时清理。`make up` 创建的持久端口转发会一直保留，
+直到执行 `make down`。
 
-## Troubleshooting
+## 故障排查
 
-- Check `kubectl get pods -A` and `kubectl -n gofr-demo get events --sort-by=.lastTimestamp` first.
-- Inspect `make logs` for Envoy Gateway, orders and catalog.
-- Run `make network-status` to separate Cilium issues from Gateway issues.
-- If a previous run was interrupted, run `make down` once, confirm the ports are
-  free, then run `make up` again.
-- Set `PROXY_URL` when image/chart downloads must use a local proxy. Set
-  `NODE_PROXY_URL` only when that proxy is reachable from Docker containers.
+- 先检查 `kubectl get pods -A` 和 `kubectl -n gofr-demo get events --sort-by=.lastTimestamp`。
+- 执行 `make logs` 查看 Envoy Gateway、orders 和 catalog 日志。
+- 执行 `make network-status`，区分 Cilium 问题和 Gateway 问题。
+- 如果上一次运行被中断，先执行一次 `make down` 并确认端口已释放，再执行 `make up`。
+- 当镜像或 chart 下载必须经过本地代理时设置 `PROXY_URL`；只有 Docker 容器能够访问该
+  代理时才设置 `NODE_PROXY_URL`。

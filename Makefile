@@ -6,26 +6,26 @@ SHELL := /usr/bin/env bash
 
 help:
 	@printf '%s\n' \
-		'Usage: make <target>' \
+		'用法：make <target>' \
 		'' \
-		'Cluster:' \
-		'  up              Create/update the k3d cluster and deploy the demo' \
-		'  verify          Run the end-to-end acceptance checks' \
-		'  status          Show nodes, workloads, Gateway API and HPA status' \
-		'  resource-status Show node and pod CPU/memory usage' \
-		'  network-status  Show Cilium and Envoy Gateway status' \
-		'  logs            Tail the main application and gateway logs' \
-		'  down            Stop forwards and delete the local cluster' \
+		'集群：' \
+		'  up              创建或更新 k3d 集群并部署演示' \
+		'  verify          执行端到端验收检查' \
+		'  status          查看节点、工作负载、Gateway API 和 HPA 状态' \
+		'  resource-status 查看节点和 Pod 的 CPU/内存使用量' \
+		'  network-status  查看 Cilium 和 Envoy Gateway 状态' \
+		'  logs            持续查看主要应用和 Gateway 日志' \
+		'  down            停止端口转发并删除本地集群' \
 		'' \
-		'Development:' \
-		'  check           Run all local quality checks' \
-		'  validate        Check shell scripts and Git whitespace' \
-		'  test            Run Go tests for all services' \
-		'  vet             Run go vet for all services' \
-		'  build           Build all Go services' \
-		'  frontend-build  Build the Vue frontend' \
-		'  load-test       Run the HPA/load-balancing demonstration' \
-		'  clean           Remove generated local build output'
+		'开发：' \
+		'  check           执行全部本地质量检查' \
+		'  validate        检查 Shell 脚本和 Git 空白错误' \
+		'  test            执行所有服务的 Go 测试' \
+		'  vet             对所有服务执行 go vet' \
+		'  build           构建所有 Go 服务' \
+		'  frontend-build  构建 Vue 前端' \
+		'  load-test       执行 HPA/负载均衡演示' \
+		'  clean           删除生成的本地构建产物'
 
 up:
 	./scripts/up.sh

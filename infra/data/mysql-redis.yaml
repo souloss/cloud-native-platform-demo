@@ -1,6 +1,5 @@
-# MySQL and Redis are intentionally local singletons for the k3d profile. The
-# application treats Redis as a cache, while MySQL is the catalog source of
-# truth; health probes make that distinction visible during failures.
+# MySQL 和 Redis 在 k3d 配置中刻意使用本地单例。应用把 Redis 视为缓存，MySQL 作为
+# 商品目录的事实来源；健康探针会在故障期间清晰体现这一差异。
 apiVersion: v1
 kind: Secret
 metadata:

@@ -1,6 +1,5 @@
-# Kite is installed from the official OCI chart by scripts/up.sh when Helm is
-# available. The fallback manifest in this directory mirrors these values.
-# Reference: oci://ghcr.io/kite-org/charts/kite
+# Helm 可用时，scripts/up.sh 会从官方 OCI chart 安装 Kite。本目录中的回退清单与这些值保持一致。
+# 参考：oci://ghcr.io/kite-org/charts/kite
 replicaCount: 1
 image:
   repository: ghcr.io/kite-org/kite

@@ -13,9 +13,8 @@ data:
       - name: cloud-native-platform-demo.gofr
         interval: 30s
         rules:
-          # These recording rules are intentionally label-light. They remain
-          # useful when GoFr changes an individual handler label, while the
-          # dashboard can still query stable project-owned metric names.
+          # 这些 recording rule 刻意保持少量标签。即使 GoFr 修改单个处理器标签，
+          # 它们仍然有用，同时控制台可以查询稳定的项目自有指标名。
           - record: gofr:http_responses:rate5m
             expr: sum(rate(app_http_response_count{job="gofr-services"}[5m]))
           - record: gofr:http_response_duration_seconds:p95

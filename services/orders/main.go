@@ -44,9 +44,8 @@ const orderLifecycleMetric = "order_lifecycle_operations"
 
 func main() {
 	app := gofr.New()
-	// Operation/result are deliberately bounded labels. Order and item IDs are
-	// logged and traced, but never attached to metrics where they would create
-	// unbounded Prometheus cardinality.
+	// 操作和结果是刻意控制基数的标签。订单和商品 ID 会记录在日志和链路中，
+	// 但不会附加到指标上，以免产生无界的 Prometheus 基数。
 	app.Metrics().NewCounter(orderLifecycleMetric, "Successful order lifecycle operations")
 	migrations := map[int64]migration.Migrate{
 		2026091901: {UP: func(d migration.Datasource) error {

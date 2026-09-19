@@ -35,9 +35,8 @@ const catalogCacheMetric = "catalog_cache_operations"
 
 func main() {
 	app := gofr.New()
-	// Cache outcomes are a bounded-cardinality business signal. Item IDs stay
-	// in traces/logs instead of metric labels so Prometheus series do not grow
-	// with catalog size.
+	// 缓存结果是基数受控的业务信号。商品 ID 保留在链路和日志中，不放入指标标签，
+	// 避免 Prometheus 序列数量随着商品目录规模增长。
 	app.Metrics().NewCounter(catalogCacheMetric, "Catalog cache operations by result")
 	migrations := map[int64]migration.Migrate{
 		2026091901: {UP: func(d migration.Datasource) error {

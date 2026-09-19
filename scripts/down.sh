@@ -10,8 +10,8 @@ stop_forward() {
   pid="$(<"${pidfile}")"
   if [[ "${pid}" =~ ^[0-9]+$ ]] && (( pid > 1 )) && kill -0 "${pid}" 2>/dev/null \
     && ps -p "${pid}" -o args= 2>/dev/null | grep -q '[k]ubectl.*port-forward'; then
-    # up.sh starts forwards in their own session. Stop the whole process group
-    # so a kubectl child cannot survive after the demo cluster is removed.
+    # up.sh 会在独立会话中启动端口转发。停止整个进程组，避免删除演示集群后
+    # kubectl 子进程仍然存活。
     kill -- "-${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
     for _ in {1..20}; do
       kill -0 "${pid}" 2>/dev/null || break
@@ -38,7 +38,7 @@ if [[ "${MODE:-k3d}" == "k3d" ]] && command -v k3d >/dev/null; then
   if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${cluster_name}"; then
     k3d cluster delete "${cluster_name}"
   else
-    echo "k3d cluster ${cluster_name} is already stopped"
+    echo "k3d 集群 ${cluster_name} 已停止"
   fi
   exit 0
 fi

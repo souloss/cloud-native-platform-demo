@@ -1,7 +1,6 @@
-# The collector is the local telemetry choke point. It accepts OTLP from the
-# GoFr services and browser, tails only demo namespace pod logs, and forwards
-# all three signal types to HyperDX. Keep its health endpoint independent from
-# the downstream backend so ingestion failures remain diagnosable.
+# Collector 是本地遥测汇聚点。它接收 GoFr 服务和浏览器发送的 OTLP，只采集演示命名空间
+# 的 Pod 日志，并将三类信号全部转发到 HyperDX。健康端点独立于下游后端，确保采集失败
+# 仍然可以排查。
 apiVersion: apps/v1
 kind: Deployment
 metadata:

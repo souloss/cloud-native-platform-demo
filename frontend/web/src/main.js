@@ -21,7 +21,7 @@ if (apiKey) {
       'deployment.environment': import.meta.env.MODE,
     },
   })
-  // Make the replay recorder explicit in the demo, even though replay is on by default.
+  // 虽然回放默认开启，但在演示中显式启动录制器，让行为更加清晰。
   HyperDX.resumeSessionRecorder()
 }
 

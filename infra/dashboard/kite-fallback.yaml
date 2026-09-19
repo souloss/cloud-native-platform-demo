@@ -1,6 +1,6 @@
-# Local-only fallback for environments where Helm is not installed.
-# This mirrors the values in kite.yaml so the dashboard remains useful in a
-# fresh k3d cluster instead of falling back to Kite's auth-only install.yaml.
+# Helm 未安装时使用的本地回退方案。
+# 它与 kite.yaml 中的值保持一致，使控制台在全新的 k3d 集群中仍然可用，
+# 不会退回到 Kite 仅包含认证功能的 install.yaml。
 apiVersion: v1
 kind: ServiceAccount
 metadata:

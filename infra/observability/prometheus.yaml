@@ -1,6 +1,5 @@
-# Prometheus is intentionally self-contained for the local demo. Pod
-# discovery keeps RBAC narrow, while recording rules provide stable operator
-# queries independent of the raw GoFr metric label set.
+# Prometheus 在本地演示中刻意保持自包含。Pod 发现机制让 RBAC 范围保持最小，recording rule
+# 则提供不依赖 GoFr 原始指标标签集合的稳定运维查询。
 apiVersion: v1
 kind: ServiceAccount
 metadata:

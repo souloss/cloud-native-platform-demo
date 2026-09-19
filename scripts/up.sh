@@ -13,20 +13,17 @@ HYPERDX_MODE="${HYPERDX_MODE:-local}"
 HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@cloud-native.local}"
 HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-CloudNative#2026}"
 PROXY_URL="${PROXY_URL:-http://127.0.0.1:7890}"
-# k3d nodes cannot reach a proxy that only listens on host loopback. By
-# default images are pulled on the host through PROXY_URL and imported into
-# every node. Set NODE_PROXY_URL only when the proxy is reachable from Docker.
+# k3d 节点无法访问只监听宿主机回环地址的代理。默认通过宿主机的 PROXY_URL
+# 拉取镜像，再导入每个节点。只有 Docker 容器能够访问代理时才设置 NODE_PROXY_URL。
 NODE_PROXY_URL="${NODE_PROXY_URL:-}"
 mkdir -p .runtime
 
-# This script is the local environment assembler: it creates the cluster,
-# installs platform controllers, applies the layer manifests, builds local
-# images, and finally exposes only the explicitly documented port-forwards.
-# Every generated file stays under .runtime/ so `make down` can clean up the
-# process handles without touching unrelated Docker or Kubernetes resources.
+# 此脚本负责组装本地环境：创建集群、安装平台控制器、应用分层清单、构建本地镜像，
+# 最后只暴露文档中明确列出的端口转发。所有生成文件都放在 .runtime/ 下，
+# 这样 `make down` 可以清理进程句柄，而不会触碰无关的 Docker 或 Kubernetes 资源。
 
-# Use the local proxy for downloads made by this script. The same proxy is
-# passed into k3d nodes so containerd can pull system images and charts.
+# 此脚本的下载使用本地代理。同一个代理也会传给 k3d 节点，供 containerd
+# 拉取系统镜像和 chart。
 export HTTP_PROXY="${HTTP_PROXY:-${PROXY_URL}}"
 export HTTPS_PROXY="${HTTPS_PROXY:-${PROXY_URL}}"
 export http_proxy="${http_proxy:-${PROXY_URL}}"
@@ -34,27 +31,27 @@ export https_proxy="${https_proxy:-${PROXY_URL}}"
 export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,.svc,.cluster.local}"
 
 if [[ ${EUID} -ne 0 ]] && ! command -v sudo >/dev/null; then
-  echo "sudo is required to install/run k3s" >&2
+  echo "安装或运行 k3s 需要 sudo" >&2
   exit 1
 fi
 SUDO=(); [[ ${EUID} -ne 0 ]] && SUDO=(sudo)
 
 if [[ "${MODE:-k3d}" == "k3d" ]]; then
   if ! command -v k3d >/dev/null; then
-    echo "Installing k3d"
+    echo "正在安装 k3d"
     curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
   fi
   K3D_K3S_IMAGE="${K3D_K3S_IMAGE:-rancher/k3s:${K3S_VERSION//+/-}}"
   if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -qx "${CLUSTER_NAME}"; then
     existing_kubeconfig="$(k3d kubeconfig write "${CLUSTER_NAME}")"
     if ! KUBECONFIG="${existing_kubeconfig}" kubectl get daemonset cilium -n kube-system >/dev/null 2>&1; then
-      echo "Existing k3d cluster is not a Cilium cluster; recreating it with Cilium enabled"
+      echo "现有 k3d 集群不是 Cilium 集群，将启用 Cilium 重新创建"
       k3d cluster delete "${CLUSTER_NAME}"
     fi
   fi
   if ! k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -qx "${CLUSTER_NAME}"; then
     if ! docker image inspect "${K3D_K3S_IMAGE}" >/dev/null 2>&1; then
-      echo "Pulling k3s node image ${K3D_K3S_IMAGE}"
+      echo "正在拉取 k3s 节点镜像 ${K3D_K3S_IMAGE}"
       docker pull "${K3D_K3S_IMAGE}"
     fi
     k3d_args=(
@@ -79,7 +76,7 @@ if [[ "${MODE:-k3d}" == "k3d" ]]; then
   KUBECONFIG_PATH="$(k3d kubeconfig write "${CLUSTER_NAME}")"
   export KUBECONFIG="${KUBECONFIG_PATH}"
   if ! command -v kubectl >/dev/null; then
-    echo "Installing kubectl client"
+    echo "正在安装 kubectl 客户端"
     KUBECTL_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
     curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /tmp/kubectl
     "${SUDO[@]}" install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
@@ -88,13 +85,13 @@ if [[ "${MODE:-k3d}" == "k3d" ]]; then
   KUBECTL=(kubectl)
 else
   if ! command -v k3s >/dev/null; then
-    echo "Installing k3s ${K3S_VERSION}"
+    echo "正在安装 k3s ${K3S_VERSION}"
     curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -s - server --write-kubeconfig-mode 644
   fi
   export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
   KUBECTL=("${SUDO[@]}" k3s kubectl)
 fi
-echo "Waiting for Kubernetes API"
+echo "正在等待 Kubernetes API"
 until "${KUBECTL[@]}" get nodes >/dev/null 2>&1; do sleep 2; done
 
 ensure_helm() {
@@ -102,7 +99,7 @@ ensure_helm() {
     return
   fi
   local archive="/tmp/helm-${HELM_VERSION}.tar.gz"
-  echo "Installing Helm ${HELM_VERSION}"
+  echo "正在安装 Helm ${HELM_VERSION}"
   curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o "${archive}"
   tar -xzf "${archive}" -C /tmp
   "${SUDO[@]}" install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
@@ -116,20 +113,19 @@ if [[ "${MODE:-k3d}" == "k3d" ]]; then
     local image="$1"
     local archive="/tmp/k3d-$(echo "${image}" | tr '/:' '__').tar"
     local envoy_repo_digest=''
-    echo "Preparing node image ${image}"
+    echo "正在准备节点镜像 ${image}"
     if ! docker image inspect "${image}" >/dev/null 2>&1; then
       docker pull "${image}"
     else
-      echo "Using local image ${image}"
+      echo "使用本地镜像 ${image}"
     fi
     docker save -o "${archive}" "${image}"
     while read -r node; do
       [[ -z "${node}" ]] && continue
       docker cp "${archive}" "${node}:/tmp/k3d-image.tar"
       docker exec "${node}" ctr -n k8s.io images import /tmp/k3d-image.tar >/dev/null
-      # Envoy Gateway pins its data-plane image by the multi-arch manifest
-      # digest. Importing a tag alone is not enough for containerd's CRI
-      # resolver, so retain the digest alias as well.
+      # Envoy Gateway 通过多架构 manifest digest 固定数据面镜像。只导入标签不足以
+      # 满足 containerd 的 CRI 解析器，因此要同时保留 digest 别名。
       if [[ "${image}" == docker.io/envoyproxy/envoy:* ]]; then
         envoy_repo_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "${image}" 2>/dev/null || true)"
         if [[ -n "${envoy_repo_digest}" ]]; then
@@ -200,11 +196,11 @@ fi
 if command -v helm >/dev/null; then
   helm upgrade --install kite oci://ghcr.io/kite-org/charts/kite --namespace kube-system --create-namespace -f infra/dashboard/kite.yaml
 else
-  echo "Helm is not installed; applying the local Kite fallback manifest"
+  echo "未安装 Helm，将应用本地 Kite 回退清单"
   "${KUBECTL[@]}" apply -f infra/dashboard/kite-fallback.yaml
 fi
 if ! command -v docker >/dev/null; then
-  echo "Docker is required to build local images" >&2
+  echo "构建本地镜像需要 Docker" >&2
   exit 1
 fi
 GO_BUILD_CACHE="${GOCACHE:-${PWD}/.runtime/go-cache}"
@@ -229,12 +225,10 @@ else
   docker save k3s-gofr/catalog:dev k3s-gofr/orders:dev k3s-gofr/web:dev | "${SUDO[@]}" k3s ctr images import -
 fi
 
-# The demo uses mutable local :dev tags; restart application pods so every
-# invocation picks up the freshly built binaries and frontend bundle.
+# 演示使用可变的本地 :dev 标签；重启应用 Pod，确保每次执行都加载刚构建的二进制和前端 bundle。
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/catalog deploy/orders deploy/web
-# Prometheus reads its configuration and recording rules from mounted
-# ConfigMaps. Restart it after applying those ConfigMaps so repeated `make up`
-# runs are configuration-safe as well as image-safe.
+# Prometheus 从挂载的 ConfigMap 读取配置和 recording rule。应用这些 ConfigMap 后重启，
+# 确保重复执行 `make up` 时配置和镜像都能生效。
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/prometheus
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/otel-collector
 
@@ -276,9 +270,8 @@ done
 start_forward() {
   local url="$1" namespace="$2" service="$3" mapping_string="$4" pid_file="$5" log_file="$6"
   read -r -a mappings <<< "${mapping_string}"
-  # A previous shell may have left a working port-forward with a stale PID file.
-  # Reuse a live forward when possible; otherwise replace only a process that is
-  # provably a kubectl port-forward before writing the new PID file.
+  # 上一次 Shell 可能留下仍在工作的端口转发和过期 PID 文件。尽可能复用存活的转发；
+  # 否则只有确认进程确实是 kubectl port-forward 时才替换并写入新的 PID 文件。
   if [[ -n "${url}" ]] && curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then
     return
   fi
@@ -304,7 +297,7 @@ start_forward() {
       fi
       sleep 0.5
     done
-    echo "port-forward did not become ready: ${url}; see ${log_file}" >&2
+    echo "端口转发未就绪：${url}；请查看 ${log_file}" >&2
     return 1
   fi
 }
@@ -312,13 +305,13 @@ start_forward() {
 start_forward http://127.0.0.1:8080/ "${GATEWAY_NAMESPACE}" "${GATEWAY_SERVICE}" 8080:80 .runtime/port-forward.pid .runtime/port-forward.log
 start_forward http://127.0.0.1:18080/ kube-system kite 18080:8080 .runtime/kite-port-forward.pid .runtime/kite-port-forward.log
 start_forward http://127.0.0.1:19090/-/ready "${NAMESPACE}" prometheus 19090:9090 .runtime/prometheus-port-forward.pid .runtime/prometheus-port-forward.log
-echo "Ready: http://127.0.0.1:8080/"
-echo "Kite: http://127.0.0.1:18080/"
-echo "Prometheus: http://127.0.0.1:19090/"
+echo "业务入口已就绪：http://127.0.0.1:8080/"
+echo "Kite：http://127.0.0.1:18080/"
+echo "Prometheus：http://127.0.0.1:19090/"
 
 bootstrap_hyperdx_local() {
-  # HyperDX local volumes keep their users. Bootstrap only an empty install so
-  # repeated `make up` calls never overwrite an operator's existing account.
+  # HyperDX 本地 volume 会保留用户。只为全新安装执行初始化，避免重复执行 `make up`
+  # 覆盖运维人员已有的账号。
   local installation='' registration_status=''
   for _ in $(seq 1 30); do
     installation="$(curl --noproxy '*' --silent --show-error --max-time 3 \
@@ -334,12 +327,12 @@ bootstrap_hyperdx_local() {
       --data-urlencode "confirmPassword=${HYPERDX_DEMO_PASSWORD}" \
       --write-out '%{http_code}' http://localhost:18081/api/register/password)"
     [[ "${registration_status}" == "200" ]] || {
-      echo "HyperDX local account registration failed (HTTP ${registration_status})" >&2
+      echo "HyperDX 本地账号注册失败（HTTP ${registration_status}）" >&2
       return 1
     }
-    echo "HyperDX local account created for ${HYPERDX_DEMO_EMAIL}"
+    echo "已为 ${HYPERDX_DEMO_EMAIL} 创建 HyperDX 本地账号"
   elif [[ "${installation}" != *'"isTeamExisting":true'* ]]; then
-    echo 'HyperDX local installation status is unavailable' >&2
+    echo '无法获取 HyperDX 本地安装状态' >&2
     return 1
   fi
 }
@@ -348,7 +341,7 @@ if [[ "${HYPERDX_MODE}" == "local" ]]; then
   start_forward http://localhost:18081/api/health "${NAMESPACE}" hyperdx "18081:8080 14318:4318" .runtime/hyperdx-port-forward.pid .runtime/hyperdx-port-forward.log
   start_forward '' "${NAMESPACE}" hyperdx 14317:4317 .runtime/hyperdx-grpc-port-forward.pid .runtime/hyperdx-grpc-port-forward.log
   bootstrap_hyperdx_local
-  echo "HyperDX: http://localhost:18081/"
-  echo "HyperDX OTLP HTTP: http://127.0.0.1:14318/"
-  echo "HyperDX OTLP gRPC: 127.0.0.1:14317"
+  echo "HyperDX：http://localhost:18081/"
+  echo "HyperDX OTLP HTTP：http://127.0.0.1:14318/"
+  echo "HyperDX OTLP gRPC：127.0.0.1:14317"
 fi
