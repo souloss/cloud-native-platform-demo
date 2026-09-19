@@ -21,8 +21,7 @@ make down     # 停止端口转发并删除 gofr-demo k3d 集群
 | Kite | <http://127.0.0.1:18080> |
 | Prometheus | <http://127.0.0.1:19090> |
 | HyperDX UI/API | <http://localhost:18081> |
-| HyperDX OTLP HTTP | <http://127.0.0.1:14318> |
-| HyperDX OTLP gRPC | `127.0.0.1:14317` |
+| Collector OTLP HTTP（调试） | <http://127.0.0.1:14318> |
 
 HyperDX UI/API 的本地认证 Cookie 和 CORS 来源域按 `localhost` 配置，因此访问它时必须
 使用 `localhost`。
@@ -42,8 +41,8 @@ HyperDX UI/API 的本地认证 Cookie 和 CORS 来源域按 `localhost` 配置�
 2. Envoy 代理副本、应用/数据/可观测性工作负载和 HPA。
 3. Kite 与 Prometheus 的可用性。
 4. 通过 Gateway 完成 Web 交付以及 catalog/order CRUD。
-5. GoFr Prometheus 指标和 HyperDX 中的 OpenTelemetry 信号。
-6. Prometheus recording rule 和 Collector 自身的遥测端点。
+5. GoFr Prometheus 指标和 Collector 汇聚的 OpenTelemetry 信号。
+6. 浏览器 OTLP 的 CORS、未授权拒绝、受限密钥认证和 Prometheus recording rule。
 
 `make verify` 完成后可以使用以下 PromQL：
 

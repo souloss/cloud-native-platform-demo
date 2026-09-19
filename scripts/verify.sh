@@ -15,6 +15,7 @@ fi
 NAMESPACE=gofr-demo
 HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@cloud-native.local}"
 HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-CloudNative#2026}"
+BROWSER_INGESTION_KEY="${VITE_OTEL_INGESTION_KEY:-$(cat .runtime/browser-ingestion-key 2>/dev/null || printf '%s' k3s-gofr-browser-ingestion)}"
 
 TEMP_PIDS=()
 TEMP_FILES=()
@@ -61,14 +62,9 @@ ensure_forward http://127.0.0.1:8080/ "${GATEWAY_NAMESPACE}" "${GATEWAY_SERVICE}
 ensure_forward http://127.0.0.1:18080/ kube-system kite 18080:8080 /tmp/kite-verify-port-forward.log
 ensure_forward http://127.0.0.1:19090/-/ready "${NAMESPACE}" prometheus 19090:9090 /tmp/prometheus-verify-port-forward.log
 if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
-  ensure_forward http://localhost:18081/api/health "${NAMESPACE}" hyperdx "18081:8080 14318:4318" /tmp/hyperdx-verify-port-forward.log
+  ensure_forward http://localhost:18081/api/health "${NAMESPACE}" hyperdx 18081:8080 /tmp/hyperdx-verify-port-forward.log
   if ! curl --noproxy '*' --silent --max-time 2 http://127.0.0.1:14318/ >/dev/null 2>&1; then
-    "${K[@]}" -n "${NAMESPACE}" port-forward service/hyperdx 14318:4318 >/tmp/hyperdx-otlp-verify-port-forward.log 2>&1 &
-    TEMP_PIDS+=("$!")
-    sleep 1
-  fi
-  if ! (exec 3<>/dev/tcp/127.0.0.1/14317) 2>/dev/null; then
-    "${K[@]}" -n "${NAMESPACE}" port-forward service/hyperdx 14317:4317 >/tmp/hyperdx-grpc-verify-port-forward.log 2>&1 &
+    "${K[@]}" -n "${NAMESPACE}" port-forward service/otel-collector 14318:4318 >/tmp/collector-otlp-verify-port-forward.log 2>&1 &
     TEMP_PIDS+=("$!")
     sleep 1
   fi
@@ -86,9 +82,11 @@ fi
 echo 'Cilium agent 健康状态：正常'
 "${K[@]}" -n envoy-gateway-system get deployment/envoy-gateway
 "${K[@]}" get gatewayclass envoy-gateway
-"${K[@]}" get crd gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io
+"${K[@]}" get crd gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io securitypolicies.gateway.envoyproxy.io
 "${K[@]}" -n "${NAMESPACE}" get gateway public -o wide
-"${K[@]}" -n "${NAMESPACE}" get httproute gofr-demo -o wide
+"${K[@]}" -n "${NAMESPACE}" get httproute gofr-demo browser-telemetry -o wide
+"${K[@]}" -n "${NAMESPACE}" get securitypolicy browser-telemetry-cors
+"${K[@]}" -n "${NAMESPACE}" get backendtrafficpolicy browser-telemetry-rate-limit
 envoy_replicas="$(${K[@]} -n envoy-gateway-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{.items[0].spec.replicas}')"
 envoy_ready_replicas="$(${K[@]} -n envoy-gateway-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{.items[0].status.readyReplicas}')"
 [[ "${envoy_replicas}" =~ ^[2-9][0-9]*$ ]] && [[ "${envoy_ready_replicas}" == "${envoy_replicas}" ]]
@@ -96,20 +94,30 @@ echo "Envoy Gateway 代理副本：${envoy_ready_replicas}/${envoy_replicas}"
 "${K[@]}" get gatewayclass envoy-gateway -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
 "${K[@]}" -n "${NAMESPACE}" get gateway public -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Programmed=True'
 "${K[@]}" -n "${NAMESPACE}" get httproute gofr-demo -o jsonpath='{range .status.parents[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
+"${K[@]}" -n "${NAMESPACE}" get httproute browser-telemetry -o jsonpath='{range .status.parents[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
+"${K[@]}" -n "${NAMESPACE}" get securitypolicy browser-telemetry-cors -o jsonpath='{range .status.ancestors[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
 "${K[@]}" -n "${NAMESPACE}" get deploy,pods,hpa,pdb
 "${K[@]}" -n kube-system get deploy/kite
 "${K[@]}" -n "${NAMESPACE}" get deploy/prometheus deploy/mysql deploy/redis
 if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
   "${K[@]}" -n "${NAMESPACE}" get deploy/hyperdx
   curl --noproxy '*' --fail --silent http://localhost:18081/api/health >/dev/null
-  curl --noproxy '*' --fail --silent -i -X OPTIONS \
-    -H 'Origin: http://localhost:18081' \
-    -H 'Access-Control-Request-Method: POST' \
-    -H 'Access-Control-Request-Headers: content-type,authorization' \
-    http://127.0.0.1:14318/v1/traces | grep -qi 'access-control-allow-origin'
   echo 'HyperDX 本地 UI/API：正常'
-  echo 'HyperDX 浏览器 OTLP CORS：正常'
 fi
+curl --noproxy '*' --fail --silent -i -X OPTIONS \
+  -H 'Origin: http://localhost:8080' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type,authorization' \
+  http://127.0.0.1:8080/v1/traces | grep -qi 'access-control-allow-origin'
+echo '浏览器 OTLP CORS：正常'
+unauthorized_status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' \
+  -X POST -H 'content-type: application/json' -d '{"resourceSpans":[]}' http://127.0.0.1:8080/v1/traces)"
+[[ "${unauthorized_status}" == 401 ]]
+authorized_status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' \
+  -X POST -H "authorization: ${BROWSER_INGESTION_KEY}" -H 'content-type: application/json' \
+  -d '{"resourceSpans":[]}' http://127.0.0.1:8080/v1/traces)"
+[[ "${authorized_status}" =~ ^2[0-9][0-9]$ ]]
+echo '浏览器 OTLP Bearer 校验：正常'
 curl --noproxy '*' --fail --silent http://127.0.0.1:18080/ >/dev/null
 curl --noproxy '*' --fail --silent \
   -H 'x-cluster-name: in-cluster' \

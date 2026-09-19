@@ -21,14 +21,15 @@ Cloud Native Platform Demo 是一个刻意保持小而完整、同时按生产�
 ## 请求与信号路径
 
 ```text
-浏览器（Vue + HyperDX 回放）
+浏览器（Vue + 会话回放）
   -> Envoy Gateway / Gateway API
     -> web（静态界面）
     -> orders -> PostgreSQL
               -> catalog -> MySQL
                         -> Redis 缓存
 
-GoFr 链路/日志/指标 -> OpenTelemetry Collector -> HyperDX v2
+浏览器 OTLP/HTTP -> Envoy Gateway -> OpenTelemetry Collector -> OTLP 后端
+GoFr OTLP/gRPC -> OpenTelemetry Collector -> OTLP 后端
 Pod 指标 -> Prometheus
 Pod 网络流量 -> Cilium/Hubble
 集群资源/事件 -> Kite
@@ -52,8 +53,12 @@ Prometheus 指标；应用处理器额外记录业务 span 以及缓存命中/�
 - 应用密钥通过 Kubernetes Secret 注入。仓库中的值只用于本地教学环境。
 - Cilium 替换 k3s 默认网络组件，但便携的 k3d 配置仍启用 kube-proxy。无 kube-proxy
   配置应当作为独立集群设计，而不是运行时开关。
+- 浏览器不直接连接 HyperDX 或其他厂商后端，而是通过 Gateway 进入 Collector。Collector
+  负责入口密钥校验、CORS、限流、脱敏和批处理，出口只使用部署方配置的 OTLP endpoint。
 - 本地可观测性栈完全自包含。启动时设置 `HYPERDX_MODE=cloud` 并提供端点和
-  API key，即可切换到 HyperDX Cloud。
+  API key，即可把 Collector 出口切换到 HyperDX Cloud；业务代码和浏览器入口无需改变。
+- 业务事件名称和属性由 [`observability-events.md`](observability-events.md) 统一定义，
+  前端通过项目 Telemetry API 发送，厂商 SDK 只位于适配层。
 
 ## 本地化取舍
 

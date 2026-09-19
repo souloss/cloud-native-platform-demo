@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import HyperDX from '@hyperdx/browser'
+import { telemetry } from './telemetry'
 
 const orders = ref([])
 const catalog = ref([])
@@ -21,8 +21,8 @@ const currentOrder = computed(() => selectedOrder.value || orders.value[0] || nu
 const ready = computed(() => !loading.value && !error.value)
 
 function track(name, attributes = {}) {
-  if (!recorderReady.value) return
-  HyperDX.addAction?.(name, attributes)
+  if (!telemetry.isReady()) return
+  telemetry.trackEvent(name, attributes)
 }
 
 function notify(message, tone = 'success') {
@@ -49,11 +49,11 @@ async function refresh(showNotice = true) {
     orders.value = nextOrders
     catalog.value = nextCatalog
     if (!catalog.value.some(item => item.id === selectedItem.value)) selectedItem.value = catalog.value[0]?.id || ''
-    track('orders-and-catalog-loaded', { orders: nextOrders.length, catalog: nextCatalog.length })
+    track('catalog.loaded', { 'catalog.item_count': nextCatalog.length, 'order.item_count': nextOrders.length })
     if (showNotice) notify(`Loaded ${nextOrders.length} orders and ${nextCatalog.length} catalog items.`)
   } catch (err) {
     error.value = err.message
-    track('crud-load-failed', { message: err.message })
+    track('ui.data.load_failed', { 'error.message': err.message })
     notify(`Could not load data: ${err.message}`, 'error')
   } finally {
     loading.value = false
@@ -71,7 +71,7 @@ async function createOrder() {
     })
     orders.value = [created, ...orders.value]
     selectedOrder.value = created
-    track('order-created', { orderId: created.id })
+    track('order.created', { 'order.id': created.id, 'order.item_id': created.itemId, 'order.quantity': created.quantity })
     notify(`Order ${created.id} created.`)
   } catch (err) {
     notify(`Could not create order: ${err.message}`, 'error')
@@ -90,7 +90,7 @@ async function updateCurrentOrder() {
     })
     orders.value = orders.value.map(order => order.id === updated.id ? updated : order)
     selectedOrder.value = updated
-    track('order-updated', { orderId: updated.id })
+    track('order.updated', { 'order.id': updated.id, 'order.state': updated.state })
     notify(`Order ${updated.id} saved.`)
   } catch (err) {
     notify(`Could not save order: ${err.message}`, 'error')
@@ -108,7 +108,7 @@ async function deleteCurrentOrder() {
     await request(`/api/orders/${id}`, { method: 'DELETE' })
     orders.value = orders.value.filter(order => order.id !== id)
     selectedOrder.value = orders.value[0] || null
-    track('order-deleted', { orderId: id })
+    track('order.deleted', { 'order.id': id })
     notify(`Order ${id} deleted.`)
   } catch (err) {
     notify(`Could not delete order: ${err.message}`, 'error')
@@ -120,16 +120,16 @@ async function deleteCurrentOrder() {
 function toggleReplay() {
   if (!recorderReady.value) return notify('HyperDX is not connected for this session.', 'error')
   if (replaying.value) {
-    HyperDX.stopSessionRecorder?.()
+    telemetry.stopReplay()
     replaying.value = false
     lastAction.value = 'Recording paused'
-    track('replay-paused')
+    track('ui.session.replay.paused')
     notify('Session replay paused.')
   } else {
-    HyperDX.resumeSessionRecorder?.()
+    telemetry.startReplay()
     replaying.value = true
     lastAction.value = 'Recording resumed'
-    track('replay-resumed')
+    track('ui.session.replay.resumed')
     notify('Session replay is recording.')
   }
 }
@@ -137,7 +137,7 @@ function toggleReplay() {
 function recordDemoAction() {
   if (!recorderReady.value) return notify('HyperDX is not connected for this session.', 'error')
   const recordedAt = new Date()
-  track('session-replay-demo-action', { source: 'vue-crud-button', recordedAt: recordedAt.toISOString() })
+  track('ui.demo.action', { 'ui.action.source': 'vue-crud-button', 'ui.action.recorded_at': recordedAt.toISOString() })
   lastAction.value = `Demo action recorded at ${recordedAt.toLocaleTimeString()}`
   notify('Demo action recorded in the current session.')
 }
@@ -156,7 +156,7 @@ function formatDate(value) {
 }
 
 onMounted(async () => {
-  sessionId.value = HyperDX.getSessionId?.() || 'Not connected'
+  sessionId.value = telemetry.getSessionId() || 'Not connected'
   recorderReady.value = sessionId.value !== 'Not connected'
   replaying.value = recorderReady.value
   await refresh(false)

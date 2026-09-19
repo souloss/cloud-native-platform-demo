@@ -15,10 +15,10 @@ Kubernetes namespace、镜像和服务名保留 `gofr-demo` / `k3s-gofr-*`，作
 这是一个可在 Linux 本机运行的全链路示例：
 
 ```
-浏览器（Vue + HyperDX 会话回放） -> Envoy Gateway API -> web / orders / catalog
-                                           |                    -> PostgreSQL / MySQL / Redis
-                                           +-- Cilium CNI/Hubble：Pod 网络与流量可见性
-                                           +-- OpenTelemetry Collector -> HyperDX v2
+浏览器（Vue + 会话回放） -> Envoy Gateway API -> web / orders / catalog
+                              |                    -> PostgreSQL / MySQL / Redis
+                              +-- OTLP/HTTP -> OpenTelemetry Collector -> HyperDX v2
+                              +-- Cilium CNI/Hubble：Pod 网络与流量可见性
 ```
 
 当前默认版本（均可通过环境变量覆盖）：k3s `v1.37.0+k3s1`、Cilium `1.20.2`、Envoy Gateway `v1.9.1`、Gateway API `v1.6.1` standard 通道、GoFr `v1.58.0`；HyperDX 使用 `hyperdx/hyperdx-all-in-one:latest`（v2），浏览器 SDK 为 `0.26.0`。
@@ -30,7 +30,7 @@ Kubernetes namespace、镜像和服务名保留 `gofr-demo` / `k3s-gofr-*`，作
 
 - **统一入口**：Gateway API + Envoy Gateway，只暴露一个业务入口，内部服务保持 ClusterIP。
 - **弹性与可用性**：应用多副本、滚动更新、PodDisruptionBudget、资源边界、启动/就绪/存活探针和 HPA。
-- **统一观测**：GoFr 结构化日志、Prometheus 指标、OpenTelemetry 链路，以及 HyperDX 的浏览器会话回放。
+- **统一观测**：GoFr 结构化日志、Prometheus 指标、OpenTelemetry 链路，以及经项目 Collector 接入的浏览器会话回放。
 - **网络可见性**：Cilium CNI、Hubble/eBPF 数据路径和 Kite 集群资源视图。
 - **本地可复现**：k3d 一键创建，不修改宿主机 systemd；`make verify` 验收从 Gateway 到持久化和遥测的完整路径。
 
@@ -52,7 +52,7 @@ make up
 
 根目录 `Makefile` 是日常入口：`make up`、`make verify`、`make status`、`make resource-status`、`make network-status`、`make check`、`make test`、`make frontend-build`、`make load-test` 和 `make down` 分别调用对应脚本或工具命令。需要查看具体实现时，再阅读 `scripts/*.sh`。
 
-默认 `HYPERDX_MODE=local`，HyperDX v2 一体化实例会部署到当前 Kubernetes 集群，并通过 `http://localhost:18081` 暴露 UI/API；本机还会转发 OTLP gRPC 到 `14317`、OTLP HTTP 到 `14318`。集群内地址分别是 `hyperdx.gofr-demo.svc.cluster.local:4317/4318`。如果要继续使用 HyperDX Cloud，启动前设置 `HYPERDX_MODE=cloud`、`HYPERDX_API_KEY` 和 `HYPERDX_OTLP_ENDPOINT`。
+默认 `HYPERDX_MODE=local`，HyperDX v2 一体化实例会部署到当前 Kubernetes 集群，并通过 `http://localhost:18081` 暴露 UI/API；浏览器 OTLP 统一经业务 Gateway 的 `/v1/traces`、`/v1/logs` 和 `/v1/metrics` 进入项目 Collector。集群内服务间链路使用 `otel-collector.gofr-demo.svc.cluster.local:4317`，Collector 再通过 `HYPERDX_OTLP_ENDPOINT` 转发到观测后端。如果要继续使用 HyperDX Cloud，启动前设置 `HYPERDX_MODE=cloud`、`HYPERDX_API_KEY` 和 `HYPERDX_OTLP_ENDPOINT`。
 
 默认使用 k3d 创建一个包含 1 个 server、2 个 agent 的 Docker 化 k3s 集群，不修改宿主机 systemd；可用 `MODE=host-k3s ./scripts/up.sh` 复用宿主机 k3s。k3d 创建时关闭 Flannel、k3s network-policy、Traefik 和 ServiceLB，随后安装 Cilium（CNI、网络策略、Hubble 与可选 eBPF 数据路径）与 Envoy Gateway（Gateway API 控制器）；默认保留 k3s kube-proxy，以兼容 k3d 的系统服务。脚本支持 `PROXY_URL=http://127.0.0.1:7890`（默认值）拉取 k3d、Kubernetes、Cilium、Envoy 和应用镜像。它会安装 Gateway API CRD、构建并导入镜像、部署清单，并等待 Cilium、Envoy Gateway、Gateway、HTTPRoute 和 Pod 就绪。它会把 Envoy Gateway 的 ClusterIP Service 转发到 `127.0.0.1:8080`：
 
@@ -67,8 +67,7 @@ open http://127.0.0.1:8080/
 - Kite 控制台：<http://127.0.0.1:18080>。本地演示默认开启匿名入口，并预置 `admin` / `kite-admin` 账号；首次打开即可进入 Gateways、HTTPRoutes、Deployments、Pods、HPA 和事件页面。演示 Gateway 位于 `gofr-demo` namespace，切换该 namespace 即可看到 `public`。Kite SQLite 数据持久化在 k3d 的 `kite-storage` PVC 中。
 - Prometheus：<http://127.0.0.1:19090>
 - HyperDX v2 UI/API：<http://localhost:18081>（认证 Cookie 和查询 API 使用此来源域，请不要改成 `127.0.0.1`）
-- HyperDX OTLP HTTP（浏览器链路、日志、会话回放）：<http://127.0.0.1:14318>
-- HyperDX OTLP gRPC：`127.0.0.1:14317`
+- Collector OTLP HTTP（本地调试入口）：<http://127.0.0.1:14318>。浏览器默认走业务 Gateway，不需要直接访问此端口。
 
 ### 环境地址与登录信息
 
@@ -85,7 +84,7 @@ open http://127.0.0.1:8080/
 以上密码只适用于本机教学环境；本地模式首次 `make up` 会通过 HyperDX 注册 API 创建该账号，已有 HyperDX PVC 时不会覆盖现有用户。生产环境应通过 Secret 注入并立即替换；HyperDX 登录后建议在用户设置中再次修改密码。可在启动前用 `HYPERDX_DEMO_EMAIL` 和 `HYPERDX_DEMO_PASSWORD` 覆盖本地演示账号。
 
 WSL2 与 Windows：脚本使用 `kubectl port-forward --address 0.0.0.0`。业务、Kite、Prometheus 和 OTLP 端口可在 WSL localhost 转发不可用时改用 `hostname -I` 返回的 WSL IP。HyperDX UI 必须使用 <http://localhost:18081>，因为本地认证 Cookie 与 CORS 来源域明确绑定到 `localhost`；用 `127.0.0.1` 或 WSL IP 打开会导致查询 API 显示 `Failed to fetch`。不要将这些端口暴露到不可信网络。
-Vue 会根据当前浏览器访问应用时的主机名自动选择 HyperDX OTLP HTTP `:14318`，所以从 Windows 使用 WSL IP 时会话回放仍会回传到同一 WSL 实例；如需固定地址，可在启动前设置 `VITE_HYPERDX_URL=http://<WSL-IP>:14318`。
+Vue 默认使用当前业务 Gateway origin 作为 OTLP 接入地址，所以从 Windows 使用 WSL IP 时浏览器遥测仍然经过同一 Gateway 和 Collector；如需固定地址，可在启动前设置 `VITE_OTEL_INGESTION_URL=http://<WSL-IP>:8080`。浏览器使用 `VITE_OTEL_INGESTION_KEY`，该密钥只对 Collector 入口有效，不应复用后端 `HYPERDX_API_KEY`。
 
 示例数据库凭据：PostgreSQL Service `postgres.gofr-demo.svc.cluster.local:5432`，MySQL Service `mysql.gofr-demo.svc.cluster.local:3306`，Redis Service `redis.gofr-demo.svc.cluster.local:6379`；PostgreSQL/MySQL 数据库和用户均为 `demo`，密码为 `demo-password`。`orders` 使用 PostgreSQL 保存订单并调用 `catalog`，`catalog` 使用 MySQL 保存商品并用 Redis 缓存单项读取，因此一次订单请求会实际访问 PostgreSQL、MySQL 和 Redis。外部业务入口统一走 Gateway API：`/`、`/api/orders`、`/api/catalog`；数据库、Collector 和运维 UI 保持集群内或通过 port-forward 访问，不通过业务 Gateway 暴露。
 Kite 的匿名模式和 `admin` / `kite-admin` 仅用于 localhost 演示；生产环境应关闭匿名模式、替换 JWT/加密密钥并通过 Secret 管理管理员凭据。
@@ -102,9 +101,9 @@ make down
 
 `verify.sh` 检查 Gateway API CRD、GatewayClass、Gateway、HTTPRoute、Cilium agent、Envoy Gateway 双副本、MySQL/Redis/应用 Deployment、HPA、Kite、HyperDX、CRUD 请求和 GoFr 指标。`down.sh` 默认删除 k3d 集群；`MODE=host-k3s ./scripts/down.sh` 才会卸载宿主机 k3s。
 
-## HyperDX v2 与会话回放
+## 浏览器遥测与会话回放
 
-后端 GoFr 使用 OTLP/gRPC 发往集群内 Collector，Collector 使用 HyperDX v2 OTLP/HTTP 端点。默认：
+后端 GoFr 使用 OTLP/gRPC 发往集群内 Collector；浏览器使用 OTLP/HTTP 经 Gateway 进入同一个 Collector。Collector 负责入口认证、CORS、限流、脱敏、批处理和出口路由，当前默认出口是 HyperDX v2，也可以替换为其他 OTLP 后端。默认：
 
 ```bash
 export HYPERDX_API_KEY=...
@@ -112,7 +111,9 @@ export HYPERDX_OTLP_ENDPOINT=https://in-otel.hyperdx.io
 export HYPERDX_API_VERSION=v2
 ```
 
-本地模式使用上方表格中的 HyperDX 账号登录即可查看 Traces、Logs、Metrics 和 Session Replay。不要提交 API 密钥；它由 Secret 注入。本地演示默认使用 `k3s-gofr-local-ingestion` 初始化 Collector 和 Vue 浏览器 SDK；生产环境应单独设置受限的 `VITE_HYPERDX_API_KEY`。切换到 Cloud 时再设置 `HYPERDX_MODE=cloud HYPERDX_API_KEY=your-key`。
+本地模式使用上方表格中的 HyperDX 账号登录即可查看 Traces、Logs、Metrics 和 Session Replay。不要提交 API 密钥；后端出口密钥由 Secret 注入。浏览器使用独立的 `VITE_OTEL_INGESTION_KEY`，只允许访问项目 Collector；生产环境应为它配置受限密钥，并单独管理后端 `HYPERDX_API_KEY`。切换到 Cloud 时再设置 `HYPERDX_MODE=cloud HYPERDX_API_KEY=your-key`。
+
+项目事件规范见 [`docs/observability-events.md`](docs/observability-events.md)。业务组件只使用 `telemetry.trackEvent(...)`，HyperDX `addAction` 仅存在于适配层；事件名称、属性基数、脱敏、采样和保留策略都按项目规范维护。
 
 前端显式开启 HyperDX 会话回放、控制台采集、完整网络请求捕获和 W3C trace 传播；页面中的 `Mark demo action` 按钮会生成带时间戳的自定义动作，订单 CRUD 请求会进入同一个浏览器到后端的链路。演示页面提供明确的 Pause/Resume recording、Session ID 复制、错误反馈和删除确认，便于在 HyperDX Sessions 中直接查看完整操作过程。
 
@@ -178,8 +179,9 @@ Envoy Gateway 监听器使用 80，生成的 Envoy 代理 Service 是 ClusterIP�
 - `infra/data`：Postgres PVC、Deployment 和 Service
 - `infra/data/mysql-redis.yaml`：MySQL PVC、Redis、Deployment 和 Service
 - `services`：独立 Go module（`go.mod`、`go.sum`、`go.work`、`Dockerfile`）与 catalog/orders 源码
-- `frontend/web`：Vue + HyperDX v2 浏览器 SDK + 会话回放
+- `frontend/web`：Vue + OpenTelemetry/HyperDX 适配层 + 会话回放
 - `docs`：架构边界和本地运行手册
+- `docs/observability-events.md`：业务事件、属性和厂商适配规范
 - `.github/workflows`：不依赖集群的持续集成质量门禁
 
 Kite 使用官方 `kite-org/kite` Helm OCI chart；`infra/dashboard/kite.yaml` 开启本地匿名演示、稳定密钥、SQLite PVC，并通过配置文件自动注册 `in-cluster` 为默认集群。没有 Helm 时，`infra/dashboard/kite-fallback.yaml` 提供等价的 Secret、PVC、Deployment 和 Service，不再使用官方最小 `deploy/install.yaml`，因此资源页不会因没有登录态或当前集群上下文而显示 `Failed to fetch`。Kite 和 Prometheus 都只通过 port-forward 暴露。

@@ -1,6 +1,6 @@
-# Collector 是本地遥测汇聚点。它接收 GoFr 服务和浏览器发送的 OTLP，只采集演示命名空间
-# 的 Pod 日志，并将三类信号全部转发到 HyperDX。健康端点独立于下游后端，确保采集失败
-# 仍然可以排查。
+# Collector 是本地遥测汇聚点。服务间信号通过内部 gRPC 接收器进入，浏览器信号通过
+# 受 Bearer 校验和 CORS 保护的 HTTP 接收器进入；Collector 只采集演示命名空间的 Pod 日志，
+# 并将三类信号转发到可配置的 OTLP 后端。健康端点独立于下游后端，确保采集失败仍然可以排查。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,6 +23,7 @@ spec:
           env:
             - { name: HYPERDX_API_KEY, valueFrom: { secretKeyRef: { name: hyperdx, key: api-key } } }
             - { name: HYPERDX_OTLP_ENDPOINT, valueFrom: { secretKeyRef: { name: hyperdx, key: otlp-endpoint } } }
+            - { name: BROWSER_OTLP_API_KEY, valueFrom: { secretKeyRef: { name: hyperdx, key: browser-api-key } } }
           ports: [{ name: otlp-grpc, containerPort: 4317 }, { name: otlp-http, containerPort: 4318 }, { name: metrics, containerPort: 8888 }]
           securityContext: { runAsUser: 0 }
           volumeMounts:
@@ -42,10 +43,19 @@ metadata: { name: otel-collector-config, namespace: gofr-demo }
 data:
   config.yaml: |
     receivers:
-      otlp:
+      otlp/internal:
         protocols:
           grpc: { endpoint: '0.0.0.0:4317' }
-          http: { endpoint: '0.0.0.0:4318' }
+      otlp/browser:
+        protocols:
+          http:
+            endpoint: '0.0.0.0:4318'
+            include_metadata: true
+            cors:
+              allowed_origins: ['http://localhost:8080', 'http://127.0.0.1:8080', 'http://localhost:18081', 'http://127.0.0.1:18081']
+              allowed_headers: ['authorization', 'content-type', 'traceparent', 'tracestate']
+            auth:
+              authenticator: bearertokenauth/browser
       filelog:
         include: [/var/log/pods/gofr-demo_*/*/*.log]
         start_at: beginning
@@ -54,7 +64,13 @@ data:
           - type: container
     processors:
       memory_limiter: { check_interval: 1s, limit_mib: 220 }
-      batch: {}
+      batch:
+        metadata_keys: [authorization]
+      attributes/redact:
+        actions:
+          - { key: http.request.header.authorization, action: delete }
+          - { key: http.request.header.cookie, action: delete }
+          - { key: user.email, action: delete }
       transform/log-service:
         log_statements:
           - context: resource
@@ -65,7 +81,12 @@ data:
         endpoint: '${env:HYPERDX_OTLP_ENDPOINT}'
         headers: { authorization: '${env:HYPERDX_API_KEY}' }
       debug: { verbosity: basic }
+    extensions:
+      bearertokenauth/browser:
+        scheme: ''
+        token: '${env:BROWSER_OTLP_API_KEY}'
     service:
+      extensions: [bearertokenauth/browser]
       telemetry:
         metrics:
           readers:
@@ -75,9 +96,9 @@ data:
                     host: 0.0.0.0
                     port: 8888
       pipelines:
-        traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/hyperdx, debug] }
-        metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/hyperdx, debug] }
-        logs: { receivers: [otlp, filelog], processors: [memory_limiter, transform/log-service, batch], exporters: [otlphttp/hyperdx, debug] }
+        traces: { receivers: [otlp/internal, otlp/browser], processors: [memory_limiter, attributes/redact, batch], exporters: [otlphttp/hyperdx, debug] }
+        metrics: { receivers: [otlp/internal, otlp/browser], processors: [memory_limiter, attributes/redact, batch], exporters: [otlphttp/hyperdx, debug] }
+        logs: { receivers: [otlp/internal, otlp/browser, filelog], processors: [memory_limiter, attributes/redact, transform/log-service, batch], exporters: [otlphttp/hyperdx, debug] }
 ---
 apiVersion: v1
 kind: Service

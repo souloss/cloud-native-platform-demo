@@ -177,14 +177,16 @@ if [[ "${HYPERDX_MODE}" == "local" ]]; then
   "${KUBECTL[@]}" apply -f infra/observability/hyperdx-secret.yaml -f infra/observability/hyperdx.yaml
   HYPERDX_OTLP_ENDPOINT="${HYPERDX_OTLP_ENDPOINT:-http://hyperdx:4318}"
   COLLECTOR_API_KEY="k3s-gofr-local-ingestion"
-  BROWSER_API_KEY="${VITE_HYPERDX_API_KEY:-${COLLECTOR_API_KEY}}"
 else
   HYPERDX_OTLP_ENDPOINT="${HYPERDX_OTLP_ENDPOINT:-https://in-otel.hyperdx.io}"
   COLLECTOR_API_KEY="${HYPERDX_API_KEY:-}"
-  BROWSER_API_KEY="${VITE_HYPERDX_API_KEY:-${COLLECTOR_API_KEY}}"
 fi
+BROWSER_API_KEY="${VITE_OTEL_INGESTION_KEY:-k3s-gofr-browser-ingestion}"
+printf '%s' "${BROWSER_API_KEY}" > .runtime/browser-ingestion-key
+chmod 600 .runtime/browser-ingestion-key
 "${KUBECTL[@]}" create secret generic hyperdx -n "${NAMESPACE}" \
   --from-literal=api-key="${COLLECTOR_API_KEY}" \
+  --from-literal=browser-api-key="${BROWSER_API_KEY}" \
   --from-literal=otlp-endpoint="${HYPERDX_OTLP_ENDPOINT}" \
   --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" apply -f infra/observability/config.yaml -f infra/observability/collector.yaml
@@ -210,14 +212,13 @@ docker build -f services/Dockerfile.runtime --build-arg SERVICE=catalog -t k3s-g
 docker build -f services/Dockerfile.runtime --build-arg SERVICE=orders -t k3s-gofr/orders:dev .
 (
   cd frontend/web
-  VITE_HYPERDX_API_KEY="${BROWSER_API_KEY}" \
-  VITE_HYPERDX_URL="${VITE_HYPERDX_URL:-}" pnpm install --frozen-lockfile
-  VITE_HYPERDX_API_KEY="${BROWSER_API_KEY}" \
-  VITE_HYPERDX_URL="${VITE_HYPERDX_URL:-}" pnpm build
+  VITE_OTEL_INGESTION_KEY="${BROWSER_API_KEY}" \
+  VITE_OTEL_INGESTION_URL="${VITE_OTEL_INGESTION_URL:-}" \
+  pnpm install --frozen-lockfile
+  VITE_OTEL_INGESTION_KEY="${BROWSER_API_KEY}" \
+  VITE_OTEL_INGESTION_URL="${VITE_OTEL_INGESTION_URL:-}" pnpm build
 )
 docker build \
-  --build-arg VITE_HYPERDX_API_KEY="${BROWSER_API_KEY}" \
-  --build-arg VITE_HYPERDX_URL="${VITE_HYPERDX_URL:-}" \
   -t k3s-gofr/web:dev frontend/web
 if [[ "${MODE:-k3d}" == "k3d" ]]; then
   k3d image import -c "${CLUSTER_NAME}" k3s-gofr/catalog:dev k3s-gofr/orders:dev k3s-gofr/web:dev
@@ -338,10 +339,9 @@ bootstrap_hyperdx_local() {
 }
 
 if [[ "${HYPERDX_MODE}" == "local" ]]; then
-  start_forward http://localhost:18081/api/health "${NAMESPACE}" hyperdx "18081:8080 14318:4318" .runtime/hyperdx-port-forward.pid .runtime/hyperdx-port-forward.log
-  start_forward '' "${NAMESPACE}" hyperdx 14317:4317 .runtime/hyperdx-grpc-port-forward.pid .runtime/hyperdx-grpc-port-forward.log
+  start_forward http://localhost:18081/api/health "${NAMESPACE}" hyperdx 18081:8080 .runtime/hyperdx-port-forward.pid .runtime/hyperdx-port-forward.log
+  start_forward '' "${NAMESPACE}" otel-collector 14318:4318 .runtime/collector-http-port-forward.pid .runtime/collector-http-port-forward.log
   bootstrap_hyperdx_local
   echo "HyperDX：http://localhost:18081/"
-  echo "HyperDX OTLP HTTP：http://127.0.0.1:14318/"
-  echo "HyperDX OTLP gRPC：127.0.0.1:14317"
+  echo "浏览器 OTLP 接入：http://127.0.0.1:14318/（经 Gateway 使用时无需直接访问此端口）"
 fi

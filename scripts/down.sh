@@ -29,7 +29,8 @@ for pidfile in \
   .runtime/kite-port-forward.pid \
   .runtime/prometheus-port-forward.pid \
   .runtime/hyperdx-port-forward.pid \
-  .runtime/hyperdx-grpc-port-forward.pid; do
+  .runtime/hyperdx-grpc-port-forward.pid \
+  .runtime/collector-http-port-forward.pid; do
   stop_forward "${pidfile}"
 done
 
