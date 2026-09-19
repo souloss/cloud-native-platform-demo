@@ -1,0 +1,43 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: catalog, namespace: gofr-demo }
+spec: { minAvailable: 1, selector: { matchLabels: { app: catalog } } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: orders, namespace: gofr-demo }
+spec: { minAvailable: 1, selector: { matchLabels: { app: orders } } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: web, namespace: gofr-demo }
+spec: { minAvailable: 1, selector: { matchLabels: { app: web } } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: catalog, namespace: gofr-demo }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: catalog }
+  minReplicas: 2
+  maxReplicas: 6
+  behavior: { scaleUp: { stabilizationWindowSeconds: 0 }, scaleDown: { stabilizationWindowSeconds: 60 } }
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: orders, namespace: gofr-demo }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: orders }
+  minReplicas: 2
+  maxReplicas: 8
+  behavior: { scaleUp: { stabilizationWindowSeconds: 0 }, scaleDown: { stabilizationWindowSeconds: 60 } }
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } } }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: web, namespace: gofr-demo }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
+  minReplicas: 2
+  maxReplicas: 4
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } } }]

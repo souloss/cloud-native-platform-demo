@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: otel-collector, namespace: gofr-demo }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: otel-collector } }
+  template:
+    metadata: { labels: { app: otel-collector } }
+    spec:
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.136.0
+          args: [--config=/conf/config.yaml]
+          env:
+            - { name: HYPERDX_API_KEY, valueFrom: { secretKeyRef: { name: hyperdx, key: api-key } } }
+            - { name: HYPERDX_OTLP_ENDPOINT, valueFrom: { secretKeyRef: { name: hyperdx, key: otlp-endpoint } } }
+          ports: [{ name: otlp-grpc, containerPort: 4317 }, { name: otlp-http, containerPort: 4318 }]
+          securityContext: { runAsUser: 0 }
+          volumeMounts:
+            - { name: config, mountPath: /conf }
+            - { name: pod-logs, mountPath: /var/log/pods, readOnly: true }
+          readinessProbe: { tcpSocket: { port: otlp-grpc }, initialDelaySeconds: 3 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { cpu: 250m, memory: 256Mi } }
+      volumes:
+        - { name: config, configMap: { name: otel-collector-config } }
+        - { name: pod-logs, hostPath: { path: /var/log/pods, type: Directory } }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: otel-collector-config, namespace: gofr-demo }
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: '0.0.0.0:4317' }
+          http: { endpoint: '0.0.0.0:4318' }
+      filelog:
+        include: [/var/log/pods/gofr-demo_*/*/*.log]
+        start_at: beginning
+        include_file_path: true
+        operators:
+          - type: container
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 220 }
+      batch: {}
+      transform/log-service:
+        log_statements:
+          - context: resource
+            statements:
+              - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["k8s.namespace.name"] == "gofr-demo" and attributes["k8s.container.name"] != nil
+    exporters:
+      otlphttp/hyperdx:
+        endpoint: '${env:HYPERDX_OTLP_ENDPOINT}'
+        headers: { authorization: '${env:HYPERDX_API_KEY}' }
+      debug: { verbosity: basic }
+    service:
+      pipelines:
+        traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/hyperdx, debug] }
+        metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/hyperdx, debug] }
+        logs: { receivers: [otlp, filelog], processors: [memory_limiter, transform/log-service, batch], exporters: [otlphttp/hyperdx, debug] }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: otel-collector, namespace: gofr-demo }
+spec:
+  selector: { app: otel-collector }
+  ports: [{ name: otlp-grpc, port: 4317, targetPort: otlp-grpc }, { name: otlp-http, port: 4318, targetPort: otlp-http }]

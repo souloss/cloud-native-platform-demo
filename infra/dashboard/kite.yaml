@@ -1,0 +1,32 @@
+# Kite is installed from the official OCI chart by scripts/up.sh when Helm is
+# available. The fallback manifest in this directory mirrors these values.
+# Reference: oci://ghcr.io/kite-org/charts/kite
+replicaCount: 1
+image:
+  repository: ghcr.io/kite-org/kite
+  pullPolicy: IfNotPresent
+deploymentStrategy:
+  type: Recreate
+anonymousUserEnabled: true
+encryptKey: gofr-demo-kite-encryption-key-change-me
+jwtSecret: gofr-demo-kite-jwt-secret-change-me
+db:
+  type: sqlite
+  sqlite:
+    persistence:
+      pvc:
+        enabled: true
+        size: 1Gi
+config:
+  enabled: true
+  superUser:
+    username: admin
+    password: kite-admin
+  clusters:
+    - name: in-cluster
+      description: k3d demo cluster
+      inCluster: true
+      default: true
+extraEnvs:
+  - name: ENABLE_ANALYTICS
+    value: "false"

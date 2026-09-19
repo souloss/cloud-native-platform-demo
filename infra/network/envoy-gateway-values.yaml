@@ -1,0 +1,16 @@
+# Envoy Gateway is the Gateway API controller. It owns Envoy proxy Deployments
+# created for Gateway resources; the application Gateway uses a ClusterIP
+# service and is exposed only through kubectl port-forward by scripts/up.sh.
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+deployment:
+  envoyGateway:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

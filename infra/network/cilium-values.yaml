@@ -1,0 +1,37 @@
+# Cilium is the cluster CNI and service dataplane for the k3d demo.
+# The cluster itself is created with Flannel and k3s network policy disabled.
+operator:
+  replicas: 1
+ipam:
+  mode: kubernetes
+# k3s kube-proxy remains enabled for the default k3d profile. This is a
+# deliberate compatibility choice: k3s owns the service VIP path while
+# Cilium supplies the CNI, policy engine, Hubble and eBPF datapath around it.
+# kubeProxyReplacement=true is supported by Cilium, but requires a fresh
+# kube-proxy-free cluster and additional host/API reachability settings; it is
+# not the validated default for this k3d teaching profile.
+kubeProxyReplacement: false
+# scripts/up.sh sets these from the current k3d server address so the values
+# file also works when Docker allocates a different bridge subnet.
+routingMode: tunnel
+tunnelProtocol: vxlan
+l7Proxy: true
+gatewayAPI:
+  enabled: false
+hubble:
+  enabled: true
+  relay:
+    enabled: false
+  ui:
+    enabled: false
+prometheus:
+  enabled: true
+operatorPrometheus:
+  enabled: true
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

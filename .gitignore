@@ -1,0 +1,10 @@
+.runtime/
+frontend/web/node_modules/
+frontend/web/dist/
+.env
+.env.*
+!.env.example
+*.log
+*.swp
+.DS_Store
+coverage.out

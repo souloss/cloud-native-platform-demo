@@ -1,0 +1,6 @@
+FROM alpine:3.22
+ARG SERVICE
+COPY .runtime/${SERVICE} /service
+RUN adduser -D -u 10001 app
+USER app
+ENTRYPOINT ["/service"]

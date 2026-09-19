@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hyperdx-clickhouse
+  namespace: gofr-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 5Gi }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hyperdx-mongo
+  namespace: gofr-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hyperdx
+  namespace: gofr-demo
+  labels: { app: hyperdx }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: hyperdx } }
+  template:
+    metadata: { labels: { app: hyperdx } }
+    spec:
+      containers:
+        - name: hyperdx
+          image: hyperdx/hyperdx-all-in-one:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: HYPERDX_API_PORT, value: "8000" }
+            - { name: HYPERDX_APP_PORT, value: "8080" }
+            - { name: HYPERDX_APP_URL, value: "http://localhost:18081" }
+            # Keep local UI redirects on the HyperDX origin.
+            - { name: FRONTEND_URL, value: "http://localhost:18081" }
+            - { name: HYPERDX_LOG_LEVEL, value: info }
+            - { name: USAGE_STATS_ENABLED, value: "false" }
+            # HyperDX v2 requires a key that decodes to exactly 32 bytes.
+            - { name: TOKEN_ENCRYPTION_KEY, value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+            - { name: INGESTION_API_KEY, valueFrom: { secretKeyRef: { name: hyperdx-local, key: ingestion-api-key } } }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: otlp-http, containerPort: 4318 }
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 3Gi }
+          volumeMounts:
+            - { name: clickhouse, mountPath: /var/lib/clickhouse }
+            - { name: mongo, mountPath: /data/db }
+      volumes:
+        - { name: clickhouse, persistentVolumeClaim: { claimName: hyperdx-clickhouse } }
+        - { name: mongo, persistentVolumeClaim: { claimName: hyperdx-mongo } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hyperdx
+  namespace: gofr-demo
+  labels: { app: hyperdx }
+spec:
+  type: ClusterIP
+  selector: { app: hyperdx }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }
+    - { name: otlp-http, port: 4318, targetPort: otlp-http }

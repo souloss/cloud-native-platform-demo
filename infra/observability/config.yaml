@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: observability, namespace: gofr-demo }
+data:
+  TRACE_EXPORTER: otlp
+  TRACER_URL: otel-collector.gofr-demo.svc.cluster.local:4317
+  TRACER_RATIO: "1"
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment=local,service.namespace=gofr-demo
