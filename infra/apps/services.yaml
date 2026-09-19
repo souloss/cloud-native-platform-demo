@@ -1,14 +1,39 @@
+# Stateless application workloads. The common labels, rolling-update policy,
+# topology spread and probes are part of the workload contract; keep them here
+# rather than duplicating deployment behavior in the startup script.
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: catalog, namespace: gofr-demo, labels: { app: catalog } }
+metadata:
+  name: catalog
+  namespace: gofr-demo
+  labels:
+    app: catalog
+    app.kubernetes.io/name: catalog
+    app.kubernetes.io/component: workload
+    app.kubernetes.io/part-of: cloud-native-platform-demo
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector: { matchLabels: { app: catalog } }
   template:
     metadata:
-      labels: { app: catalog }
+      labels:
+        app: catalog
+        app.kubernetes.io/name: catalog
+        app.kubernetes.io/component: workload
+        app.kubernetes.io/part-of: cloud-native-platform-demo
       annotations: { prometheus.io/scrape: "true", prometheus.io/path: /metrics, prometheus.io/port: "2121" }
     spec:
+      terminationGracePeriodSeconds: 15
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: catalog } }
       containers:
         - name: catalog
           image: k3s-gofr/catalog:dev
@@ -26,26 +51,53 @@ spec:
             - { name: REDIS_HOST, value: redis }
             - { name: REDIS_PORT, value: "6379" }
           ports: [{ name: http, containerPort: 8000 }, { name: metrics, containerPort: 2121 }]
-          readinessProbe: { httpGet: { path: /.well-known/health, port: http }, initialDelaySeconds: 3 }
-          livenessProbe: { httpGet: { path: /.well-known/alive, port: http }, initialDelaySeconds: 5 }
+          startupProbe: { httpGet: { path: /.well-known/health, port: http }, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 2 }
+          readinessProbe: { httpGet: { path: /.well-known/health, port: http }, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3 }
+          livenessProbe: { httpGet: { path: /.well-known/alive, port: http }, initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { cpu: 200m, memory: 128Mi } }
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: catalog, namespace: gofr-demo }
+metadata:
+  name: catalog
+  namespace: gofr-demo
+  labels: { app: catalog, app.kubernetes.io/name: catalog, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec: { selector: { app: catalog }, ports: [{ name: http, port: 8000, targetPort: http }, { name: metrics, port: 2121, targetPort: metrics }] }
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: orders, namespace: gofr-demo, labels: { app: orders } }
+metadata:
+  name: orders
+  namespace: gofr-demo
+  labels:
+    app: orders
+    app.kubernetes.io/name: orders
+    app.kubernetes.io/component: workload
+    app.kubernetes.io/part-of: cloud-native-platform-demo
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector: { matchLabels: { app: orders } }
   template:
     metadata:
-      labels: { app: orders }
+      labels:
+        app: orders
+        app.kubernetes.io/name: orders
+        app.kubernetes.io/component: workload
+        app.kubernetes.io/part-of: cloud-native-platform-demo
       annotations: { prometheus.io/scrape: "true", prometheus.io/path: /metrics, prometheus.io/port: "2121" }
     spec:
+      terminationGracePeriodSeconds: 15
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: orders } }
       containers:
         - name: orders
           image: k3s-gofr/orders:dev
@@ -62,33 +114,72 @@ spec:
             - { name: DB_USER, value: demo }
             - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: postgres, key: POSTGRES_PASSWORD } } }
           ports: [{ name: http, containerPort: 8000 }, { name: metrics, containerPort: 2121 }]
-          readinessProbe: { httpGet: { path: /.well-known/health, port: http }, initialDelaySeconds: 3 }
-          livenessProbe: { httpGet: { path: /.well-known/alive, port: http }, initialDelaySeconds: 5 }
+          startupProbe: { httpGet: { path: /.well-known/health, port: http }, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 2 }
+          readinessProbe: { httpGet: { path: /.well-known/health, port: http }, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3 }
+          livenessProbe: { httpGet: { path: /.well-known/alive, port: http }, initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { cpu: 200m, memory: 128Mi } }
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: orders, namespace: gofr-demo }
+metadata:
+  name: orders
+  namespace: gofr-demo
+  labels: { app: orders, app.kubernetes.io/name: orders, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec: { selector: { app: orders }, ports: [{ name: http, port: 8000, targetPort: http }, { name: metrics, port: 2121, targetPort: metrics }] }
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: web, namespace: gofr-demo, labels: { app: web } }
+metadata:
+  name: web
+  namespace: gofr-demo
+  labels:
+    app: web
+    app.kubernetes.io/name: web
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: cloud-native-platform-demo
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
   selector: { matchLabels: { app: web } }
   template:
-    metadata: { labels: { app: web } }
+    metadata:
+      labels:
+        app: web
+        app.kubernetes.io/name: web
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: cloud-native-platform-demo
     spec:
+      terminationGracePeriodSeconds: 15
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: web } }
       containers:
         - name: web
           image: k3s-gofr/web:dev
           imagePullPolicy: IfNotPresent
           ports: [{ name: http, containerPort: 8080 }]
-          readinessProbe: { httpGet: { path: /, port: http }, initialDelaySeconds: 2 }
+          startupProbe: { httpGet: { path: /, port: http }, failureThreshold: 30, periodSeconds: 2, timeoutSeconds: 2 }
+          readinessProbe: { httpGet: { path: /, port: http }, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3 }
+          livenessProbe: { httpGet: { path: /, port: http }, initialDelaySeconds: 10, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 }
+          # The stock nginx entrypoint fixes ownership of its cache directory
+          # before binding the unprivileged 8080 listener. Keep the image's
+          # default capability set for that initialization, while disabling
+          # privilege escalation; a future hardened image can drop all caps
+          # after moving this chown step into its build stage.
+          securityContext: { allowPrivilegeEscalation: false }
           resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { cpu: 100m, memory: 64Mi } }
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: web, namespace: gofr-demo }
+metadata:
+  name: web
+  namespace: gofr-demo
+  labels: { app: web, app.kubernetes.io/name: web, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec: { selector: { app: web }, ports: [{ name: http, port: 8080, targetPort: http }] }

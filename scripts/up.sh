@@ -10,14 +10,20 @@ HELM_VERSION="${HELM_VERSION:-v3.19.0}"
 NAMESPACE=gofr-demo
 CLUSTER_NAME="${K3D_CLUSTER_NAME:-gofr-demo}"
 HYPERDX_MODE="${HYPERDX_MODE:-local}"
-HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@signal-forge.local}"
-HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-SignalForge#2026}"
+HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@cloud-native.local}"
+HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-CloudNative#2026}"
 PROXY_URL="${PROXY_URL:-http://127.0.0.1:7890}"
 # k3d nodes cannot reach a proxy that only listens on host loopback. By
 # default images are pulled on the host through PROXY_URL and imported into
 # every node. Set NODE_PROXY_URL only when the proxy is reachable from Docker.
 NODE_PROXY_URL="${NODE_PROXY_URL:-}"
 mkdir -p .runtime
+
+# This script is the local environment assembler: it creates the cluster,
+# installs platform controllers, applies the layer manifests, builds local
+# images, and finally exposes only the explicitly documented port-forwards.
+# Every generated file stays under .runtime/ so `make down` can clean up the
+# process handles without touching unrelated Docker or Kubernetes resources.
 
 # Use the local proxy for downloads made by this script. The same proxy is
 # passed into k3d nodes so containerd can pull system images and charts.
@@ -186,7 +192,7 @@ fi
   --from-literal=otlp-endpoint="${HYPERDX_OTLP_ENDPOINT}" \
   --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" apply -f infra/observability/config.yaml -f infra/observability/collector.yaml
-"${KUBECTL[@]}" apply -f infra/observability/prometheus.yaml
+"${KUBECTL[@]}" apply -f infra/observability/prometheus-rules.yaml -f infra/observability/prometheus.yaml
 "${KUBECTL[@]}" apply -f infra/data/postgres.yaml -f infra/data/mysql-redis.yaml
 "${KUBECTL[@]}" apply -f infra/apps/services.yaml -f infra/apps/autoscaling.yaml
 "${KUBECTL[@]}" apply -f infra/network/gateway.yaml
@@ -226,6 +232,11 @@ fi
 # The demo uses mutable local :dev tags; restart application pods so every
 # invocation picks up the freshly built binaries and frontend bundle.
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/catalog deploy/orders deploy/web
+# Prometheus reads its configuration and recording rules from mounted
+# ConfigMaps. Restart it after applying those ConfigMaps so repeated `make up`
+# runs are configuration-safe as well as image-safe.
+"${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/prometheus
+"${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/otel-collector
 
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/catalog --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/orders --timeout=180s
@@ -266,6 +277,8 @@ start_forward() {
   local url="$1" namespace="$2" service="$3" mapping_string="$4" pid_file="$5" log_file="$6"
   read -r -a mappings <<< "${mapping_string}"
   # A previous shell may have left a working port-forward with a stale PID file.
+  # Reuse a live forward when possible; otherwise replace only a process that is
+  # provably a kubectl port-forward before writing the new PID file.
   if [[ -n "${url}" ]] && curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then
     return
   fi
@@ -304,6 +317,8 @@ echo "Kite: http://127.0.0.1:18080/"
 echo "Prometheus: http://127.0.0.1:19090/"
 
 bootstrap_hyperdx_local() {
+  # HyperDX local volumes keep their users. Bootstrap only an empty install so
+  # repeated `make up` calls never overwrite an operator's existing account.
   local installation='' registration_status=''
   for _ in $(seq 1 30); do
     installation="$(curl --noproxy '*' --silent --show-error --max-time 3 \

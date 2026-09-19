@@ -13,8 +13,8 @@ else
   K=("${SUDO[@]}" k3s kubectl)
 fi
 NAMESPACE=gofr-demo
-HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@signal-forge.local}"
-HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-SignalForge#2026}"
+HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@cloud-native.local}"
+HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-CloudNative#2026}"
 
 TEMP_PIDS=()
 TEMP_FILES=()
@@ -153,6 +153,8 @@ echo 'GoFr metrics: OK'
 echo '== Prometheus scrape targets =='
 prometheus_targets=''
 prometheus_metric=''
+collector_metric=''
+recorded_metric=''
 for _ in $(seq 1 20); do
   prometheus_targets="$(curl --noproxy '*' --silent --show-error --fail \
     --get --data-urlencode 'query=up{job="gofr-services",namespace="gofr-demo"}' \
@@ -160,14 +162,27 @@ for _ in $(seq 1 20); do
   prometheus_metric="$(curl --noproxy '*' --silent --show-error --fail \
     --get --data-urlencode 'query=app_http_response_count{job="gofr-services",namespace="gofr-demo"}' \
     http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
+  collector_metric="$(curl --noproxy '*' --silent --show-error --fail \
+    --get --data-urlencode 'query=up{job="otel-collector",namespace="gofr-demo"}' \
+    http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
+  recorded_metric="$(curl --noproxy '*' --silent --show-error --fail \
+    --get --data-urlencode 'query=gofr:http_responses:rate5m' \
+    http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
   if printf '%s' "${prometheus_targets}" | grep -q '"result":\[[^]]' &&
-    printf '%s' "${prometheus_metric}" | grep -q '"result":\[[^]]'; then
+    printf '%s' "${prometheus_metric}" | grep -q '"result":\[[^]]' &&
+    printf '%s' "${collector_metric}" | grep -q '"result":\[[^]]' &&
+    printf '%s' "${recorded_metric}" | grep -q '"result":\[[^]]'; then
     break
   fi
   sleep 1
 done
 printf '%s' "${prometheus_targets}" | grep -q '"result":\[[^]]'
 printf '%s' "${prometheus_metric}" | grep -q '"result":\[[^]]'
+printf '%s' "${collector_metric}" | grep -q '"result":\[[^]]'
+printf '%s' "${recorded_metric}" | grep -q '"result":\[[^]]'
+prometheus_rules="$(curl --noproxy '*' --silent --show-error --fail \
+  http://127.0.0.1:19090/api/v1/rules 2>/dev/null || true)"
+printf '%s' "${prometheus_rules}" | grep -q 'gofr'
 echo 'Prometheus application targets and GoFr histogram: OK'
 
 echo '== HyperDX Collector =='

@@ -1,12 +1,22 @@
+# The collector is the local telemetry choke point. It accepts OTLP from the
+# GoFr services and browser, tails only demo namespace pod logs, and forwards
+# all three signal types to HyperDX. Keep its health endpoint independent from
+# the downstream backend so ingestion failures remain diagnosable.
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: otel-collector, namespace: gofr-demo }
+metadata:
+  name: otel-collector
+  namespace: gofr-demo
+  labels: { app: otel-collector, app.kubernetes.io/name: otel-collector, app.kubernetes.io/component: observability, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec:
   replicas: 1
   selector: { matchLabels: { app: otel-collector } }
   template:
-    metadata: { labels: { app: otel-collector } }
+    metadata:
+      labels: { app: otel-collector, app.kubernetes.io/name: otel-collector, app.kubernetes.io/component: observability, app.kubernetes.io/part-of: cloud-native-platform-demo }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/path: /metrics, prometheus.io/port: "8888" }
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.136.0
@@ -14,12 +24,14 @@ spec:
           env:
             - { name: HYPERDX_API_KEY, valueFrom: { secretKeyRef: { name: hyperdx, key: api-key } } }
             - { name: HYPERDX_OTLP_ENDPOINT, valueFrom: { secretKeyRef: { name: hyperdx, key: otlp-endpoint } } }
-          ports: [{ name: otlp-grpc, containerPort: 4317 }, { name: otlp-http, containerPort: 4318 }]
+          ports: [{ name: otlp-grpc, containerPort: 4317 }, { name: otlp-http, containerPort: 4318 }, { name: metrics, containerPort: 8888 }]
           securityContext: { runAsUser: 0 }
           volumeMounts:
             - { name: config, mountPath: /conf }
             - { name: pod-logs, mountPath: /var/log/pods, readOnly: true }
-          readinessProbe: { tcpSocket: { port: otlp-grpc }, initialDelaySeconds: 3 }
+          startupProbe: { tcpSocket: { port: otlp-grpc }, failureThreshold: 30, periodSeconds: 2 }
+          readinessProbe: { tcpSocket: { port: otlp-grpc }, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3 }
+          livenessProbe: { tcpSocket: { port: otlp-grpc }, initialDelaySeconds: 15, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 }
           resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { cpu: 250m, memory: 256Mi } }
       volumes:
         - { name: config, configMap: { name: otel-collector-config } }
@@ -55,6 +67,14 @@ data:
         headers: { authorization: '${env:HYPERDX_API_KEY}' }
       debug: { verbosity: basic }
     service:
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
       pipelines:
         traces: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/hyperdx, debug] }
         metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/hyperdx, debug] }
@@ -62,7 +82,10 @@ data:
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: otel-collector, namespace: gofr-demo }
+metadata: { name: otel-collector, namespace: gofr-demo, labels: { app.kubernetes.io/name: otel-collector, app.kubernetes.io/component: observability, app.kubernetes.io/part-of: cloud-native-platform-demo } }
 spec:
   selector: { app: otel-collector }
-  ports: [{ name: otlp-grpc, port: 4317, targetPort: otlp-grpc }, { name: otlp-http, port: 4318, targetPort: otlp-http }]
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }
+    - { name: otlp-http, port: 4318, targetPort: otlp-http }
+    - { name: metrics, port: 8888, targetPort: metrics }

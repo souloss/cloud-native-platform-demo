@@ -32,6 +32,11 @@ On a fresh local HyperDX volume, `make up` creates the demo account from
 `HYPERDX_DEMO_EMAIL` and `HYPERDX_DEMO_PASSWORD`. It never changes users in an
 existing volume.
 
+The project owns the k3d cluster named `gofr-demo` and the port-forwards listed
+above. `make down` removes those resources only; it deliberately does not stop
+unrelated Docker containers or host services. This makes cleanup safe on a
+developer workstation that is running other projects.
+
 ## Acceptance matrix
 
 `make verify` checks the following contracts:
@@ -41,6 +46,15 @@ existing volume.
 3. Kite and Prometheus availability.
 4. Web delivery and catalog/order CRUD through the Gateway.
 5. GoFr Prometheus metrics and OpenTelemetry signals in HyperDX.
+6. Prometheus recording rules and the collector's own telemetry endpoint.
+
+Useful PromQL after `make verify`:
+
+```promql
+gofr:http_responses:rate5m
+gofr:http_response_duration_seconds:p95
+sum by (operation, result) (rate(catalog_cache_operations_total[5m]))
+```
 
 The script creates temporary verification port-forwards and removes them on
 exit. The persistent forwards created by `make up` remain until `make down`.

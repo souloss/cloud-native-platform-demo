@@ -1,6 +1,12 @@
+# MySQL and Redis are intentionally local singletons for the k3d profile. The
+# application treats Redis as a cache, while MySQL is the catalog source of
+# truth; health probes make that distinction visible during failures.
 apiVersion: v1
 kind: Secret
-metadata: { name: mysql, namespace: gofr-demo }
+metadata:
+  name: mysql
+  namespace: gofr-demo
+  labels: { app.kubernetes.io/name: mysql, app.kubernetes.io/component: data, app.kubernetes.io/part-of: cloud-native-platform-demo }
 type: Opaque
 stringData:
   MYSQL_ROOT_PASSWORD: root-password
@@ -20,47 +26,56 @@ kind: Deployment
 metadata: { name: mysql, namespace: gofr-demo, labels: { app: mysql } }
 spec:
   replicas: 1
+  strategy: { type: Recreate }
   selector: { matchLabels: { app: mysql } }
   template:
-    metadata: { labels: { app: mysql } }
+    metadata: { labels: { app: mysql, app.kubernetes.io/name: mysql, app.kubernetes.io/component: data, app.kubernetes.io/part-of: cloud-native-platform-demo } }
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: mysql
           image: mysql:8.4
           imagePullPolicy: IfNotPresent
           envFrom: [{ secretRef: { name: mysql } }]
           ports: [{ name: mysql, containerPort: 3306 }]
-          readinessProbe: { exec: { command: [sh, -c, 'mysqladmin ping -h 127.0.0.1 -u demo -pdemo-password --silent'] }, initialDelaySeconds: 15, periodSeconds: 5 }
-          livenessProbe: { exec: { command: [sh, -c, 'mysqladmin ping -h 127.0.0.1 -u demo -pdemo-password --silent'] }, initialDelaySeconds: 30, periodSeconds: 10 }
+          startupProbe: { exec: { command: [sh, -c, 'mysqladmin ping -h 127.0.0.1 -u demo -pdemo-password --silent'] }, failureThreshold: 30, periodSeconds: 5 }
+          readinessProbe: { exec: { command: [sh, -c, 'mysqladmin ping -h 127.0.0.1 -u demo -pdemo-password --silent'] }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
+          livenessProbe: { exec: { command: [sh, -c, 'mysqladmin ping -h 127.0.0.1 -u demo -pdemo-password --silent'] }, initialDelaySeconds: 30, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
           resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: 500m, memory: 768Mi } }
           volumeMounts: [{ name: data, mountPath: /var/lib/mysql }]
       volumes: [{ name: data, persistentVolumeClaim: { claimName: mysql } }]
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: mysql, namespace: gofr-demo }
+metadata: { name: mysql, namespace: gofr-demo, labels: { app.kubernetes.io/name: mysql, app.kubernetes.io/component: data, app.kubernetes.io/part-of: cloud-native-platform-demo } }
 spec: { selector: { app: mysql }, ports: [{ name: mysql, port: 3306, targetPort: mysql }] }
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: redis, namespace: gofr-demo, labels: { app: redis } }
+metadata:
+  name: redis
+  namespace: gofr-demo
+  labels: { app: redis, app.kubernetes.io/name: redis, app.kubernetes.io/component: data, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec:
   replicas: 1
+  strategy: { type: Recreate }
   selector: { matchLabels: { app: redis } }
   template:
-    metadata: { labels: { app: redis } }
+    metadata: { labels: { app: redis, app.kubernetes.io/name: redis, app.kubernetes.io/component: data, app.kubernetes.io/part-of: cloud-native-platform-demo } }
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: redis
           image: redis:7-alpine
           imagePullPolicy: IfNotPresent
           args: [redis-server, --appendonly, "yes"]
           ports: [{ name: redis, containerPort: 6379 }]
-          readinessProbe: { exec: { command: [redis-cli, ping] }, initialDelaySeconds: 3, periodSeconds: 5 }
-          livenessProbe: { exec: { command: [redis-cli, ping] }, initialDelaySeconds: 10, periodSeconds: 10 }
+          startupProbe: { exec: { command: [redis-cli, ping] }, failureThreshold: 30, periodSeconds: 2 }
+          readinessProbe: { exec: { command: [redis-cli, ping] }, periodSeconds: 5, timeoutSeconds: 3, failureThreshold: 3 }
+          livenessProbe: { exec: { command: [redis-cli, ping] }, initialDelaySeconds: 15, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
           resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 200m, memory: 256Mi } }
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: redis, namespace: gofr-demo }
+metadata: { name: redis, namespace: gofr-demo, labels: { app.kubernetes.io/name: redis, app.kubernetes.io/component: data, app.kubernetes.io/part-of: cloud-native-platform-demo } }
 spec: { selector: { app: redis }, ports: [{ name: redis, port: 6379, targetPort: redis }] }

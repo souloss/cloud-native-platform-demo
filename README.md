@@ -1,13 +1,13 @@
-# Cloud Native Signal Forge
+# Cloud Native Platform Demo
 
-一个可在本地运行、按生产边界组织的云原生演示平台：用 k3d 承载 k3s，
+一个可在本地运行、按生产边界组织的云原生平台演示：用 k3d 承载 k3s，
 用 Cilium 提供网络与流量可见性，用 Envoy Gateway 统一入口，用 GoFr
 微服务演示弹性扩缩，并用 OpenTelemetry、Prometheus、HyperDX 和 Kite
 串起从业务请求到集群运维的完整观测路径。
 
-项目仓库建议使用 `cloud-native-signal-forge` 作为 slug；现有 Kubernetes
-namespace、镜像和服务名保留 `gofr-demo` / `k3s-gofr-*`，便于兼容已有本地
-演示环境和脚本。
+仓库地址：<https://github.com/souloss/cloud-native-platform-demo>。
+Kubernetes namespace、镜像和服务名保留 `gofr-demo` / `k3s-gofr-*`，作为
+稳定的本地运行时标识，避免让演示项目名和基础设施资源名耦合。
 
 架构分层与请求路径见 [`docs/architecture.md`](docs/architecture.md)，日常
 启动、验收、排障和停止步骤见 [`docs/runbook.md`](docs/runbook.md)。
@@ -22,6 +22,19 @@ Browser (Vue + HyperDX session replay) -> Envoy Gateway API -> web / orders / ca
 ```
 
 当前默认版本（均可通过环境变量覆盖）：k3s `v1.37.0+k3s1`、Cilium `1.20.2`、Envoy Gateway `v1.9.1`、Gateway API `v1.6.1` standard channel、GoFr `v1.58.0`；HyperDX 使用 `hyperdx/hyperdx-all-in-one:latest`（v2），浏览器 SDK 为 `0.26.0`。
+
+## 项目定位
+
+这是一个可运行的云原生平台参考实现，不是单一微服务样例。它把入口治理、
+服务间调用、数据访问、弹性策略和观测信号放在同一个可复现的本地环境中：
+
+- **统一入口**：Gateway API + Envoy Gateway，只暴露一个业务入口，内部服务保持 ClusterIP。
+- **弹性与可用性**：应用多副本、滚动更新、PodDisruptionBudget、资源边界、启动/就绪/存活探针和 HPA。
+- **统一观测**：GoFr structured logs、Prometheus metrics、OpenTelemetry traces，以及 HyperDX 的浏览器 session replay。
+- **网络可见性**：Cilium CNI、Hubble/eBPF datapath 和 Kite 集群资源视图。
+- **本地可复现**：k3d 一键创建，不修改宿主机 systemd；`make verify` 验收从 Gateway 到持久化和 telemetry 的完整路径。
+
+工程边界、请求/信号路径和本地取舍见 [`docs/architecture.md`](docs/architecture.md)。
 
 ## 前置条件
 
@@ -63,7 +76,7 @@ open http://127.0.0.1:8080/
 | --- | --- | --- | --- |
 | 业务入口 | <http://127.0.0.1:8080> | 不需要 | Vue + Gateway API |
 | Kite | <http://127.0.0.1:18080> | `admin` | `kite-admin` |
-| HyperDX v2 | <http://localhost:18081> | `demo@signal-forge.local` | `SignalForge#2026` |
+| HyperDX v2 | <http://localhost:18081> | `demo@cloud-native.local` | `CloudNative#2026` |
 | Prometheus | <http://127.0.0.1:19090> | 不需要 | PromQL 查询页面 |
 | PostgreSQL | 集群内 `postgres.gofr-demo.svc.cluster.local:5432` | `demo` | `demo-password` |
 | MySQL | 集群内 `mysql.gofr-demo.svc.cluster.local:3306` | `demo` | `demo-password` |
@@ -103,7 +116,7 @@ export HYPERDX_API_VERSION=v2
 
 前端显式开启 HyperDX session replay、console capture、完整网络请求捕获和 W3C trace propagation；页面中的 `Mark demo action` 按钮会生成带时间戳的 custom action，订单 CRUD 请求会进入同一个 browser-to-backend trace。演示页面提供明确的 Pause/Resume recording、Session ID 复制、错误反馈和删除确认，便于在 HyperDX Sessions 中直接查看完整操作过程。
 
-完整演示顺序：1) 打开应用入口，页面默认开始 session replay；2) 点击 `Mark demo action`，页面会显示已记录时间，再到 HyperDX Sessions 查看当前会话；3) 在 Traces 按 `k3s-gofr-web`、`k3s-gofr-orders` 或 `k3s-gofr-catalog` 查看 browser → Envoy Gateway → orders → catalog → PostgreSQL/MySQL/Redis 链路，并在 Cilium/Hubble 中查看 Pod flow；4) 在 Prometheus 查询 `app_http_response_count`、`rate(app_http_response_count[5m])` 或 `up{job="gofr-services"}`；5) 运行 `./scripts/load-test.sh`，观察 `kubectl -n gofr-demo get hpa,pods -w` 中 orders 扩容；6) 在 Kite 查看 Gateway、Deployment、Pod、HPA 和事件；7) 查看 Cilium：`kubectl -n kube-system get pods -l k8s-app=cilium`。`Pause recording` / `Resume recording` 只控制当前浏览器会话的 recorder，不会删除已有回放。
+完整演示顺序：1) 打开应用入口，页面默认开始 session replay；2) 点击 `Mark demo action`，页面会显示已记录时间，再到 HyperDX Sessions 查看当前会话；3) 在 Traces 按 `k3s-gofr-web`、`k3s-gofr-orders` 或 `k3s-gofr-catalog` 查看 browser → Envoy Gateway → orders → catalog → PostgreSQL/MySQL/Redis 链路，并在 Cilium/Hubble 中查看 Pod flow；4) 在 Prometheus 查询 `gofr:http_responses:rate5m`、`gofr:http_response_duration_seconds:p95`、`catalog_cache_operations_total` 或 `up{job="gofr-services"}`；5) 运行 `./scripts/load-test.sh`，观察 `kubectl -n gofr-demo get hpa,pods -w` 中 orders 扩容；6) 在 Kite 查看 Gateway、Deployment、Pod、HPA 和事件；7) 查看 Cilium：`kubectl -n kube-system get pods -l k8s-app=cilium`。`Pause recording` / `Resume recording` 只控制当前浏览器会话的 recorder，不会删除已有回放。
 
 HyperDX 的 SQL 编辑器必须遵守 ClickHouse 子句顺序：`FROM` → `WHERE` → `ORDER BY` → `LIMIT`。例如下面的查询可以直接粘贴到 Traces：
 

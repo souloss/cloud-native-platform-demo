@@ -1,3 +1,5 @@
+# Availability and elasticity are declared beside the workload definitions so
+# a rollout, voluntary eviction and HPA decision share the same contract.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata: { name: catalog, namespace: gofr-demo }
@@ -40,4 +42,5 @@ spec:
   scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
   minReplicas: 2
   maxReplicas: 4
+  behavior: { scaleUp: { stabilizationWindowSeconds: 0 }, scaleDown: { stabilizationWindowSeconds: 60 } }
   metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } } }]

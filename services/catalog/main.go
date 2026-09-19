@@ -31,8 +31,14 @@ CREATE TABLE IF NOT EXISTS catalog_items (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 )`
 
+const catalogCacheMetric = "catalog_cache_operations"
+
 func main() {
 	app := gofr.New()
+	// Cache outcomes are a bounded-cardinality business signal. Item IDs stay
+	// in traces/logs instead of metric labels so Prometheus series do not grow
+	// with catalog size.
+	app.Metrics().NewCounter(catalogCacheMetric, "Catalog cache operations by result")
 	migrations := map[int64]migration.Migrate{
 		2026091901: {UP: func(d migration.Datasource) error {
 			if _, err := d.SQL.Exec(createCatalogTable); err != nil {
@@ -70,6 +76,14 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description)`)
 	app.Run()
 }
 
+func validateItemInput(input itemInput) error {
+	if input.Name == "" || input.Description == "" {
+		return errors.New("name and description are required")
+	}
+
+	return nil
+}
+
 func listItems(ctx *gofr.Context) (any, error) {
 	defer ctx.Trace("catalog.list").End()
 	rows, err := ctx.SQL.QueryContext(ctx, "SELECT id, name, description FROM catalog_items ORDER BY id")
@@ -103,10 +117,16 @@ func getItem(ctx *gofr.Context) (any, error) {
 	if cached, err := ctx.Redis.Get(ctx, cacheKey).Result(); err == nil {
 		var cachedItem item
 		if err := json.Unmarshal([]byte(cached), &cachedItem); err == nil {
+			ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "read", "result", "hit")
 			ctx.Info("catalog cache hit", "id", id)
 			return cachedItem, nil
 		}
-	} else if !errors.Is(err, redis.Nil) {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "read", "result", "invalid")
+		ctx.Warn("catalog cache value is invalid", "id", id)
+	} else if errors.Is(err, redis.Nil) {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "read", "result", "miss")
+	} else {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "read", "result", "error")
 		ctx.Warn("catalog cache unavailable", "error", err)
 	}
 
@@ -119,7 +139,10 @@ func getItem(ctx *gofr.Context) (any, error) {
 	encoded, err := json.Marshal(current)
 	if err == nil {
 		if cacheErr := ctx.Redis.Set(ctx, cacheKey, encoded, 0).Err(); cacheErr != nil {
+			ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "write", "result", "error")
 			ctx.Warn("catalog cache write failed", "error", cacheErr)
+		} else {
+			ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "write", "result", "success")
 		}
 	}
 	ctx.Info("catalog cache miss", "id", id)
@@ -132,8 +155,8 @@ func createItem(ctx *gofr.Context) (any, error) {
 	if err := ctx.Bind(&input); err != nil {
 		return nil, fmt.Errorf("invalid catalog body: %w", err)
 	}
-	if input.Name == "" || input.Description == "" {
-		return nil, errors.New("name and description are required")
+	if err := validateItemInput(input); err != nil {
+		return nil, err
 	}
 	id := fmt.Sprintf("sku-%d", time.Now().UnixNano())
 	if _, err := ctx.SQL.ExecContext(ctx, "INSERT INTO catalog_items (id, name, description) VALUES (?, ?, ?)", id, input.Name, input.Description); err != nil {
@@ -148,8 +171,8 @@ func updateItem(ctx *gofr.Context) (any, error) {
 	if err := ctx.Bind(&input); err != nil {
 		return nil, fmt.Errorf("invalid catalog body: %w", err)
 	}
-	if input.Name == "" || input.Description == "" {
-		return nil, errors.New("name and description are required")
+	if err := validateItemInput(input); err != nil {
+		return nil, err
 	}
 	result, err := ctx.SQL.ExecContext(ctx, "UPDATE catalog_items SET name = ?, description = ? WHERE id = ?", input.Name, input.Description, ctx.PathParam("id"))
 	if err != nil {
@@ -159,7 +182,12 @@ func updateItem(ctx *gofr.Context) (any, error) {
 	if err != nil || affected == 0 {
 		return nil, fmt.Errorf("catalog item %q not found", ctx.PathParam("id"))
 	}
-	ctx.Redis.Del(ctx, "catalog:item:"+ctx.PathParam("id"))
+	if err := ctx.Redis.Del(ctx, "catalog:item:"+ctx.PathParam("id")).Err(); err != nil {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "invalidate", "result", "error")
+		ctx.Warn("catalog cache invalidation failed", "error", err)
+	} else {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "invalidate", "result", "success")
+	}
 	return item{ID: ctx.PathParam("id"), Name: input.Name, Description: input.Description}, nil
 }
 
@@ -173,6 +201,11 @@ func deleteItem(ctx *gofr.Context) (any, error) {
 	if err != nil || affected == 0 {
 		return nil, fmt.Errorf("catalog item %q not found", ctx.PathParam("id"))
 	}
-	ctx.Redis.Del(ctx, "catalog:item:"+ctx.PathParam("id"))
+	if err := ctx.Redis.Del(ctx, "catalog:item:"+ctx.PathParam("id")).Err(); err != nil {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "invalidate", "result", "error")
+		ctx.Warn("catalog cache invalidation failed", "error", err)
+	} else {
+		ctx.Metrics().IncrementCounter(ctx, catalogCacheMetric, "operation", "invalidate", "result", "success")
+	}
 	return map[string]string{"deleted": ctx.PathParam("id")}, nil
 }

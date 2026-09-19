@@ -1,6 +1,6 @@
-# Cloud Native Signal Forge
+# Cloud Native Platform Demo
 
-Cloud Native Signal Forge is a deliberately small, production-shaped platform
+Cloud Native Platform Demo is a deliberately small, production-shaped platform
 reference project. It keeps the service boundary, traffic policy, telemetry
 pipeline, data stores and operator workflow visible in one local k3d cluster.
 
@@ -37,7 +37,10 @@ Cluster resources/events -> Kite
 
 The `orders` service propagates W3C trace context when it calls `catalog`, so
 one order request is useful as an end-to-end tracing example rather than a set
-of disconnected health checks.
+of disconnected health checks. GoFr also emits structured request logs and
+Prometheus metrics; the application handlers add business spans and cache
+hit/miss events so the same request can be investigated from three signal
+types.
 
 ## Production-shaped choices
 
@@ -45,6 +48,12 @@ of disconnected health checks.
   and is exposed locally only with `kubectl port-forward`.
 - Workloads have more than one replica, resource requests/limits, readiness and
   liveness probes, PodDisruptionBudgets and CPU-based HPAs.
+- Stateless workloads use rolling updates and hostname-based topology spreading;
+  probes distinguish startup, readiness and liveness so a slow dependency does
+  not receive traffic before the process is ready.
+- Prometheus keeps a local TSDB PVC and recording rules for the main GoFr
+  request-rate and latency signals. This is still intentionally small, but it
+  gives operators a stable query surface instead of relying on raw metric names.
 - Application secrets are injected through Kubernetes Secrets. The checked-in
   values are local teaching defaults only.
 - Cilium replaces the default k3s networking components while kube-proxy stays

@@ -1,4 +1,4 @@
-module github.com/example/k3s-gofr-demo
+module github.com/souloss/cloud-native-platform-demo/services
 
 go 1.27
 

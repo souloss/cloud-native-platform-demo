@@ -1,5 +1,5 @@
 {
-  "name": "k3s-gofr-demo-web",
+  "name": "cloud-native-platform-demo-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",

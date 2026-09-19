@@ -40,8 +40,14 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`
 
+const orderLifecycleMetric = "order_lifecycle_operations"
+
 func main() {
 	app := gofr.New()
+	// Operation/result are deliberately bounded labels. Order and item IDs are
+	// logged and traced, but never attached to metrics where they would create
+	// unbounded Prometheus cardinality.
+	app.Metrics().NewCounter(orderLifecycleMetric, "Successful order lifecycle operations")
 	migrations := map[int64]migration.Migrate{
 		2026091901: {UP: func(d migration.Datasource) error {
 			if _, err := d.SQL.Exec(createOrdersTable); err != nil {
@@ -75,6 +81,14 @@ ON CONFLICT (id) DO NOTHING`)
 		return map[string]string{"service": "orders", "status": "ok", "version": os.Getenv("SERVICE_VERSION")}, nil
 	})
 	app.Run()
+}
+
+func validateOrderInput(input orderInput) error {
+	if input.ItemID == "" || input.Quantity < 1 {
+		return errors.New("itemId and a positive quantity are required")
+	}
+
+	return nil
 }
 
 func listOrders(ctx *gofr.Context) (any, error) {
@@ -125,8 +139,8 @@ func createOrder(ctx *gofr.Context) (any, error) {
 	if err := ctx.Bind(&input); err != nil {
 		return nil, fmt.Errorf("invalid order body: %w", err)
 	}
-	if input.ItemID == "" || input.Quantity < 1 {
-		return nil, errors.New("itemId and a positive quantity are required")
+	if err := validateOrderInput(input); err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -142,6 +156,7 @@ VALUES ($1, $2, $3, $4, $5, $6)`, current.ID, current.ItemID, current.Quantity, 
 		return nil, err
 	}
 	ctx.Info("order created", "order_id", current.ID, "item_id", current.ItemID)
+	ctx.Metrics().IncrementCounter(ctx, orderLifecycleMetric, "operation", "create", "result", "success")
 	return current, nil
 }
 
@@ -151,8 +166,8 @@ func updateOrder(ctx *gofr.Context) (any, error) {
 	if err := ctx.Bind(&input); err != nil {
 		return nil, fmt.Errorf("invalid order body: %w", err)
 	}
-	if input.ItemID == "" || input.Quantity < 1 {
-		return nil, errors.New("itemId and a positive quantity are required")
+	if err := validateOrderInput(input); err != nil {
+		return nil, err
 	}
 	if input.State == "" {
 		input.State = "updated"
@@ -165,7 +180,12 @@ UPDATE orders SET item_id = $1, quantity = $2, state = $3, updated_at = CURRENT_
 	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
 		return nil, fmt.Errorf("order %q not found", ctx.PathParam("id"))
 	}
-	return getOrder(ctx)
+	current, err := getOrder(ctx)
+	if err == nil {
+		ctx.Metrics().IncrementCounter(ctx, orderLifecycleMetric, "operation", "update", "result", "success")
+		ctx.Info("order updated", "order_id", ctx.PathParam("id"), "state", input.State)
+	}
+	return current, err
 }
 
 func deleteOrder(ctx *gofr.Context) (any, error) {
@@ -179,6 +199,7 @@ func deleteOrder(ctx *gofr.Context) (any, error) {
 		return nil, fmt.Errorf("order %q not found", ctx.PathParam("id"))
 	}
 	ctx.Info("order deleted", "order_id", ctx.PathParam("id"))
+	ctx.Metrics().IncrementCounter(ctx, orderLifecycleMetric, "operation", "delete", "result", "success")
 	return map[string]string{"deleted": ctx.PathParam("id")}, nil
 }
 

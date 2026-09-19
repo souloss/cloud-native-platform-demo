@@ -23,13 +23,13 @@ kind: Deployment
 metadata:
   name: hyperdx
   namespace: gofr-demo
-  labels: { app: hyperdx }
+  labels: { app: hyperdx, app.kubernetes.io/name: hyperdx, app.kubernetes.io/component: observability, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec:
   replicas: 1
   strategy: { type: Recreate }
   selector: { matchLabels: { app: hyperdx } }
   template:
-    metadata: { labels: { app: hyperdx } }
+    metadata: { labels: { app: hyperdx, app.kubernetes.io/name: hyperdx, app.kubernetes.io/component: observability, app.kubernetes.io/part-of: cloud-native-platform-demo } }
     spec:
       containers:
         - name: hyperdx
@@ -77,7 +77,7 @@ kind: Service
 metadata:
   name: hyperdx
   namespace: gofr-demo
-  labels: { app: hyperdx }
+  labels: { app: hyperdx, app.kubernetes.io/name: hyperdx, app.kubernetes.io/component: observability, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec:
   type: ClusterIP
   selector: { app: hyperdx }
