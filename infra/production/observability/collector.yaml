@@ -1,0 +1,304 @@
+# Requires the OpenTelemetry Operator. The DaemonSet reads node/container logs
+# and forwards them to the gateway; the gateway is the only component allowed to
+# export to OpenObserve.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  # The node log Agent needs read-only hostPath access to /var/log/pods. Keep
+  # this namespace at baseline and enforce restricted policy on application and
+  # OpenObserve namespaces; review the generated Agent pod security context.
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: gateway
+  namespace: observability
+spec:
+  mode: deployment
+  replicas: 2
+  serviceAccount: otel-gateway
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  env:
+    - name: OPENOBSERVE_OTLP_ENDPOINT
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-otel
+          key: endpoint
+    - name: OPENOBSERVE_AUTH
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-otel
+          key: authorization
+    - name: BROWSER_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-otel
+          key: browser-ingestion-key
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  config:
+    extensions:
+      health_check: { endpoint: 0.0.0.0:13133 }
+      bearertokenauth/browser:
+        token: ${env:BROWSER_API_KEY}
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: 0.0.0.0:4317 }
+          http:
+            endpoint: 0.0.0.0:4318
+            auth:
+              authenticator: bearertokenauth/browser
+      prometheus/hubble:
+        config:
+          scrape_configs:
+            - job_name: hubble
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: keep
+                  regex: kube-system
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: hubble-metrics
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  action: keep
+                  regex: hubble-metrics
+      prometheus/keda:
+        config:
+          scrape_configs:
+            - job_name: keda
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: keep
+                  regex: keda
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: keda-operator-metrics-apiserver
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  action: keep
+                  regex: metrics
+      prometheus/otel:
+        config:
+          scrape_configs:
+            - job_name: otel-gateway
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: keep
+                  regex: observability
+                - source_labels: [__meta_kubernetes_service_label_operator_opentelemetry_io_collector_service_type]
+                  action: keep
+                  regex: monitoring
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: gateway-collector-monitoring
+            - job_name: otel-agent
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: keep
+                  regex: observability
+                - source_labels: [__meta_kubernetes_service_label_operator_opentelemetry_io_collector_service_type]
+                  action: keep
+                  regex: monitoring
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: agent-collector-monitoring
+      k8s_cluster:
+        auth_type: serviceAccount
+        collection_interval: 30s
+        node_conditions_to_report: [Ready, MemoryPressure, DiskPressure, PIDPressure]
+        allocatable_types_to_report: [cpu, memory, ephemeral-storage]
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 768, spike_limit_mib: 192 }
+      k8sattributes: {}
+      attributes/redact:
+        actions:
+          - { key: http.request.header.authorization, action: delete }
+          - { key: http.request.header.cookie, action: delete }
+          - { key: user.email, action: delete }
+      batch: { send_batch_size: 1024, timeout: 5s }
+    exporters:
+      otlphttp/openobserve:
+        endpoint: ${env:OPENOBSERVE_OTLP_ENDPOINT}
+        headers:
+          Authorization: ${env:OPENOBSERVE_AUTH}
+        retry_on_failure: { enabled: true, max_elapsed_time: 300s }
+        sending_queue: { enabled: true, queue_size: 10000 }
+    service:
+      extensions: [health_check, bearertokenauth/browser]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, attributes/redact, batch]
+          exporters: [otlphttp/openobserve]
+        metrics:
+          receivers: [otlp, prometheus/hubble, prometheus/keda, prometheus/otel, k8s_cluster]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp/openobserve]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, attributes/redact, batch]
+          exporters: [otlphttp/openobserve]
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: agent
+  namespace: observability
+spec:
+  mode: daemonset
+  serviceAccount: otel-agent
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  env:
+    - name: GATEWAY_ENDPOINT
+      value: gateway-collector.observability.svc.cluster.local:4317
+    - name: K8S_NODE_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+  hostNetwork: false
+  volumes:
+    - name: varlogpods
+      hostPath: { path: /var/log/pods }
+    - name: hostfs
+      hostPath: { path: / }
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 768Mi }
+  config:
+    receivers:
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        exclude: [/var/log/pods/observability_*/*/*.log]
+        start_at: end
+        include_file_path: true
+        operators:
+          - type: container
+      hostmetrics:
+        collection_interval: 30s
+        root_path: /hostfs
+        scrapers:
+          cpu:
+            metrics:
+              system.cpu.utilization: { enabled: true }
+          disk: {}
+          filesystem:
+            metrics:
+              system.filesystem.utilization: { enabled: true }
+          load: {}
+          memory:
+            metrics:
+              system.memory.utilization: { enabled: true }
+          network: {}
+          paging: {}
+          process: {}
+          processes: {}
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: ${env:K8S_NODE_IP}:10250
+        insecure_skip_verify: true
+        metric_groups: [node, pod, container, volume]
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 576, spike_limit_mib: 128 }
+      k8sattributes: {}
+      batch: { send_batch_size: 512, timeout: 5s }
+    exporters:
+      otlp/gateway:
+        endpoint: ${env:GATEWAY_ENDPOINT}
+        tls: { insecure: true }
+        retry_on_failure: { enabled: true, max_elapsed_time: 300s }
+    service:
+      pipelines:
+        metrics:
+          receivers: [hostmetrics, kubeletstats]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]
+        logs:
+          receivers: [filelog]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-gateway
+  namespace: observability
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-agent
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-k8sattributes
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces, nodes, nodes/stats, services, endpoints, events, replicationcontrollers, resourcequotas, persistentvolumeclaims, persistentvolumes]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets, deployments, daemonsets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-gateway-k8sattributes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-k8sattributes
+subjects:
+  - kind: ServiceAccount
+    name: otel-gateway
+    namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-agent-k8sattributes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-k8sattributes
+subjects:
+  - kind: ServiceAccount
+    name: otel-agent
+    namespace: observability

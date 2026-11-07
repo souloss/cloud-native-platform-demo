@@ -3,6 +3,7 @@
 replicaCount: 1
 image:
   repository: ghcr.io/kite-org/kite
+  tag: v0.16.0
   pullPolicy: IfNotPresent
 deploymentStrategy:
   type: Recreate

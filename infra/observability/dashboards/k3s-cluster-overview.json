@@ -1,0 +1,1530 @@
+{
+  "title": "K3s Cluster Overview",
+  "description": "Node health, capacity and host resources; Kubernetes object health, pod/container usage, autoscaling, Hubble, logs and traces.",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Default",
+      "panels": [
+        {
+          "id": "k3s-node-1",
+          "type": "metric",
+          "title": "K3s nodes",
+          "description": "Distinct node names reported by the OTel hostmetrics Agent.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT count(DISTINCT k8s_node_name) AS nodes FROM \"system_cpu_utilization\"",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_cpu_utilization",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Nodes",
+                    "alias": "nodes",
+                    "column": "nodes",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 1
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-2",
+          "type": "metric",
+          "title": "Healthy scrape targets",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT count(DISTINCT service_name) AS services FROM \"up\" WHERE value > 0",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "up",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Services",
+                    "alias": "services",
+                    "column": "services",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 2
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-3",
+          "type": "metric",
+          "title": "CPU utilization by node",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "percent"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, k8s_node_name AS node, avg(value) * 100 AS utilization FROM \"system_cpu_utilization\" GROUP BY ts,node ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_cpu_utilization",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Utilization %",
+                    "alias": "utilization",
+                    "column": "utilization",
+                    "isDerived": false,
+                    "aggregationFunction": "avg",
+                    "color": "#5960b2"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 96,
+            "h": 9,
+            "i": 3
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-4",
+          "type": "area",
+          "title": "Memory utilization by node",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "percent"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, k8s_node_name AS node, avg(value) * 100 AS utilization FROM \"system_memory_utilization\" GROUP BY ts,node ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_memory_utilization",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Utilization %",
+                    "alias": "utilization",
+                    "column": "utilization",
+                    "isDerived": false,
+                    "aggregationFunction": "avg",
+                    "color": "#c23531"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 9,
+            "w": 96,
+            "h": 9,
+            "i": 4
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-5",
+          "type": "area",
+          "title": "Filesystem utilization by node",
+          "description": "Filesystem utilization is emitted per mountpoint; filter mountpoint in the dashboard when focusing on a volume.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "percent"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, k8s_node_name AS node, mountpoint, avg(value) * 100 AS utilization FROM \"system_filesystem_utilization\" GROUP BY ts,node,mountpoint ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_filesystem_utilization",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Utilization %",
+                    "alias": "utilization",
+                    "column": "utilization",
+                    "isDerived": false,
+                    "aggregationFunction": "avg",
+                    "color": "#53ca53"
+                  }
+                ],
+                "z": [
+                  {
+                    "label": "Mountpoint",
+                    "alias": "mountpoint",
+                    "column": "mountpoint",
+                    "isDerived": false
+                  }
+                ],
+                "breakdown": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 9,
+            "w": 96,
+            "h": 9,
+            "i": 5
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-6",
+          "type": "area",
+          "title": "Load average (1m)",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, k8s_node_name AS node, avg(value) AS load FROM \"system_cpu_load_average_1m\" GROUP BY ts,node ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_cpu_load_average_1m",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Load",
+                    "alias": "load",
+                    "column": "load",
+                    "isDerived": false,
+                    "aggregationFunction": "avg",
+                    "color": "#5960b2"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 18,
+            "w": 96,
+            "h": 9,
+            "i": 6
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-7",
+          "type": "area",
+          "title": "Network bytes by direction",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "bytes"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, direction, sum(value) AS bytes FROM \"system_network_io\" WHERE device != 'lo' GROUP BY ts,direction ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_network_io",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Bytes",
+                    "alias": "bytes",
+                    "column": "bytes",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#c23531"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Direction",
+                    "alias": "direction",
+                    "column": "direction",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 18,
+            "w": 96,
+            "h": 9,
+            "i": 7
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-8",
+          "type": "table",
+          "title": "Node resource snapshot",
+          "description": "Latest time range aggregate; use the CPU/memory charts for trends.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_node_name AS node, avg(value) * 100 AS memory_percent FROM \"system_memory_utilization\" GROUP BY node ORDER BY node",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "system_memory_utilization",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Memory %",
+                    "alias": "memory_percent",
+                    "column": "memory_percent",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 27,
+            "w": 96,
+            "h": 9,
+            "i": 8
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-9",
+          "type": "pie",
+          "title": "Logs by namespace",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_namespace_name AS namespace, count(*) AS events FROM \"default\" GROUP BY namespace ORDER BY events DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Events",
+                    "alias": "events",
+                    "column": "events",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 27,
+            "w": 48,
+            "h": 9,
+            "i": 9
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-10",
+          "type": "table",
+          "title": "Traces by service",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "ms"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT service_name AS service, count(*) AS spans, avg(duration) AS avg_duration FROM \"default\" GROUP BY service ORDER BY spans DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Spans",
+                    "alias": "spans",
+                    "column": "spans",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  },
+                  {
+                    "label": "Avg duration",
+                    "alias": "avg_duration",
+                    "column": "avg_duration",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 27,
+            "w": 48,
+            "h": 9,
+            "i": 10
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-11",
+          "type": "area",
+          "title": "Hubble flows by verdict",
+          "description": "Cilium Hubble flow counters collected by the OTel Gateway.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, verdict, sum(value) AS flows FROM \"hubble_flows_processed_total\" GROUP BY ts,verdict ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "hubble_flows_processed_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Flows",
+                    "alias": "flows",
+                    "column": "flows",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#5960b2"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Verdict",
+                    "alias": "verdict",
+                    "column": "verdict",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 36,
+            "w": 96,
+            "h": 9,
+            "i": 11
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-12",
+          "type": "bar",
+          "title": "Hubble drops by reason",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT reason, sum(value) AS drops FROM \"hubble_drop_total\" GROUP BY reason ORDER BY drops DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "hubble_drop_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Reason",
+                    "alias": "reason",
+                    "column": "reason",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Drops",
+                    "alias": "drops",
+                    "column": "drops",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#c23531"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 36,
+            "w": 96,
+            "h": 9,
+            "i": 12
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-13",
+          "type": "bar",
+          "title": "Running pods by namespace",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_namespace_name AS namespace, count(DISTINCT k8s_pod_name) AS running_pods FROM \"k8s_pod_phase\" WHERE value = 2 GROUP BY namespace ORDER BY running_pods DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_pod_phase",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Running pods",
+                    "alias": "running_pods",
+                    "column": "running_pods",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 45,
+            "w": 96,
+            "h": 9,
+            "i": 13
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-14",
+          "type": "area",
+          "title": "Pod CPU usage by namespace",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "cores"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, k8s_namespace_name AS namespace, sum(value) AS cpu_cores FROM \"k8s_pod_cpu_usage\" GROUP BY ts,namespace ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_pod_cpu_usage",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "CPU cores",
+                    "alias": "cpu_cores",
+                    "column": "cpu_cores",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#5960b2"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 45,
+            "w": 96,
+            "h": 9,
+            "i": 14
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-15",
+          "type": "table",
+          "title": "Top pod memory working set",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "bytes"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_namespace_name AS namespace, k8s_pod_name AS pod, k8s_node_name AS node, max(value) AS memory_bytes FROM \"k8s_pod_memory_working_set\" GROUP BY namespace,pod,node ORDER BY memory_bytes DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_pod_memory_working_set",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  },
+                  {
+                    "label": "Pod",
+                    "alias": "pod",
+                    "column": "pod",
+                    "isDerived": false
+                  },
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Memory",
+                    "alias": "memory_bytes",
+                    "column": "memory_bytes",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 54,
+            "w": 96,
+            "h": 9,
+            "i": 15
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-16",
+          "type": "table",
+          "title": "Deployment availability",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_namespace_name AS namespace, k8s_deployment_name AS deployment, max(value) AS available_replicas FROM \"k8s_deployment_available\" GROUP BY namespace,deployment ORDER BY namespace,deployment",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_deployment_available",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  },
+                  {
+                    "label": "Deployment",
+                    "alias": "deployment",
+                    "column": "deployment",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Available",
+                    "alias": "available_replicas",
+                    "column": "available_replicas",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 54,
+            "w": 96,
+            "h": 9,
+            "i": 16
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-17",
+          "type": "area",
+          "title": "HPA current replicas by namespace",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "pods"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, k8s_namespace_name AS namespace, sum(value) AS replicas FROM \"k8s_hpa_current_replicas\" GROUP BY ts,namespace ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_hpa_current_replicas",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Replicas",
+                    "alias": "replicas",
+                    "column": "replicas",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#c23531"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 63,
+            "w": 96,
+            "h": 9,
+            "i": 17
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-18",
+          "type": "table",
+          "title": "Containers with restarts",
+          "description": "The Kubernetes API may reset old restart counts when it prunes container history; treat this as a recent-restart signal, not a lifetime counter.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_namespace_name AS namespace, k8s_pod_name AS pod, k8s_container_name AS container, max(value) AS restarts FROM \"k8s_container_restarts\" WHERE value > 0 GROUP BY namespace,pod,container ORDER BY restarts DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_container_restarts",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Namespace",
+                    "alias": "namespace",
+                    "column": "namespace",
+                    "isDerived": false
+                  },
+                  {
+                    "label": "Pod",
+                    "alias": "pod",
+                    "column": "pod",
+                    "isDerived": false
+                  },
+                  {
+                    "label": "Container",
+                    "alias": "container",
+                    "column": "container",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Restarts",
+                    "alias": "restarts",
+                    "column": "restarts",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 63,
+            "w": 96,
+            "h": 9,
+            "i": 18
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-19",
+          "type": "table",
+          "title": "Node CPU allocatable",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "line_interpolation": "linear"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_node_name AS node, max(value) AS cpu_cores FROM \"k8s_node_allocatable_cpu\" GROUP BY node ORDER BY node",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_node_allocatable_cpu",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "CPU cores",
+                    "alias": "cpu_cores",
+                    "column": "cpu_cores",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 72,
+            "w": 64,
+            "h": 9,
+            "i": 19
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-20",
+          "type": "table",
+          "title": "Node memory allocatable",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "line_interpolation": "linear"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_node_name AS node, max(value) AS memory_bytes FROM \"k8s_node_allocatable_memory\" GROUP BY node ORDER BY node",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_node_allocatable_memory",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Memory",
+                    "alias": "memory_bytes",
+                    "column": "memory_bytes",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 64,
+            "y": 72,
+            "w": 64,
+            "h": 9,
+            "i": 20
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "k3s-node-21",
+          "type": "table",
+          "title": "Node readiness",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "line_interpolation": "linear"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT k8s_node_name AS node, max(value) AS ready FROM \"k8s_node_condition_ready\" GROUP BY node ORDER BY node",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "k8s_node_condition_ready",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Node",
+                    "alias": "node",
+                    "column": "node",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Ready (1=yes)",
+                    "alias": "ready",
+                    "column": "ready",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 128,
+            "y": 72,
+            "w": 64,
+            "h": 9,
+            "i": 21
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [],
+    "showDynamicFilters": true
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "15m"
+  }
+}

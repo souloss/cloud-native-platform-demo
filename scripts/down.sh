@@ -3,13 +3,14 @@ set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 SUDO=(); [[ ${EUID} -ne 0 ]] && SUDO=(sudo)
 K=("${SUDO[@]}" k3s kubectl)
+RUNTIME_DIR="${RUNTIME_DIR:-.runtime}"
 
 stop_forward() {
   local pidfile="$1" pid=''
   [[ -f "${pidfile}" ]] || return 0
   pid="$(<"${pidfile}")"
   if [[ "${pid}" =~ ^[0-9]+$ ]] && (( pid > 1 )) && kill -0 "${pid}" 2>/dev/null \
-    && ps -p "${pid}" -o args= 2>/dev/null | grep -q '[k]ubectl.*port-forward'; then
+    && ps -p "${pid}" -o args= 2>/dev/null | grep -Eq '([k]ubectl.*port-forward|[s]ocat .*TCP-LISTEN:)'; then
     # up.sh 会在独立会话中启动端口转发。停止整个进程组，避免删除演示集群后
     # kubectl 子进程仍然存活。
     kill -- "-${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
@@ -25,12 +26,12 @@ stop_forward() {
 }
 
 for pidfile in \
-  .runtime/port-forward.pid \
-  .runtime/kite-port-forward.pid \
-  .runtime/prometheus-port-forward.pid \
-  .runtime/hyperdx-port-forward.pid \
-  .runtime/hyperdx-grpc-port-forward.pid \
-  .runtime/collector-http-port-forward.pid; do
+  "${RUNTIME_DIR}/port-forward.pid" \
+  "${RUNTIME_DIR}/kite-port-forward.pid" \
+  "${RUNTIME_DIR}/prometheus-port-forward.pid" \
+  "${RUNTIME_DIR}/openobserve-port-forward.pid" \
+  "${RUNTIME_DIR}/collector-http-port-forward.pid" \
+  "${RUNTIME_DIR}/collector-port-forward.pid"; do
   stop_forward "${pidfile}"
 done
 
@@ -44,10 +45,8 @@ if [[ "${MODE:-k3d}" == "k3d" ]] && command -v k3d >/dev/null; then
   exit 0
 fi
 "${K[@]}" delete namespace gofr-demo --ignore-not-found
-"${K[@]}" delete gatewayclass envoy-gateway --ignore-not-found
-"${K[@]}" delete namespace envoy-gateway-system --ignore-not-found
+"${K[@]}" delete gatewayclass cilium --ignore-not-found
 if command -v helm >/dev/null; then
-  helm uninstall envoy-gateway -n envoy-gateway-system --ignore-not-found 2>/dev/null || true
   helm uninstall cilium -n kube-system --ignore-not-found 2>/dev/null || true
 fi
 if command -v k3s-uninstall.sh >/dev/null; then "${SUDO[@]}" k3s-uninstall.sh; fi

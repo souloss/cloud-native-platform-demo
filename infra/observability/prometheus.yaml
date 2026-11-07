@@ -39,25 +39,26 @@ data:
         relabel_configs:
           - { source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape], action: keep, regex: "true" }
           - { source_labels: [__meta_kubernetes_namespace], action: keep, regex: gofr-demo }
+          - { source_labels: [__meta_kubernetes_pod_label_app], action: keep, regex: '(catalog|orders)' }
+          - { source_labels: [__meta_kubernetes_pod_container_port_name], action: keep, regex: metrics }
           - { source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path], action: replace, target_label: __metrics_path__, regex: (.+) }
-          - { source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port], action: replace, regex: '([^:]+)(?::\\d+)?;(\\d+)', replacement: '$1:$2', target_label: __address__ }
           - { source_labels: [__meta_kubernetes_namespace], action: replace, target_label: namespace }
           - { source_labels: [__meta_kubernetes_pod_label_app], action: replace, target_label: app }
-      - job_name: envoy-gateway
+      - job_name: cilium
         kubernetes_sd_configs: [{ role: pod }]
         relabel_configs:
           - { source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape], action: keep, regex: "true" }
-          - { source_labels: [__meta_kubernetes_namespace], action: keep, regex: envoy-gateway-system }
+          - { source_labels: [__meta_kubernetes_namespace], action: keep, regex: kube-system }
+          - { source_labels: [__meta_kubernetes_pod_label_k8s_app], action: keep, regex: cilium|cilium-envoy }
+          - { source_labels: [__meta_kubernetes_pod_container_port_name], action: keep, regex: prometheus|metrics }
           - { source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path], action: replace, target_label: __metrics_path__, regex: (.+) }
-          - { source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port], action: replace, target_label: __address__, regex: '([^:]+)(?::\\d+)?;(\\d+)', replacement: '$1:$2' }
           - { source_labels: [__meta_kubernetes_namespace], action: replace, target_label: namespace }
-          - { source_labels: [__meta_kubernetes_pod_label_gateway_envoyproxy_io_owning_gateway_name], action: replace, target_label: gateway }
       - job_name: otel-collector
         kubernetes_sd_configs: [{ role: pod }]
         relabel_configs:
           - { source_labels: [__meta_kubernetes_pod_label_app], action: keep, regex: otel-collector }
           - { source_labels: [__meta_kubernetes_namespace], action: keep, regex: gofr-demo }
-          - { source_labels: [__address__], action: replace, target_label: __address__, regex: '([^:]+)(?::\d+)?', replacement: '$1:8888' }
+          - { source_labels: [__meta_kubernetes_pod_container_port_name], action: keep, regex: metrics }
           - { source_labels: [__meta_kubernetes_namespace], action: replace, target_label: namespace }
 ---
 apiVersion: apps/v1
@@ -75,7 +76,7 @@ spec:
       serviceAccountName: prometheus
       containers:
         - name: prometheus
-          image: prom/prometheus:v3.8.0
+          image: prom/prometheus:v3.16.0
           args: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=6h]
           ports: [{ name: http, containerPort: 9090 }]
           readinessProbe: { httpGet: { path: /-/ready, port: http }, initialDelaySeconds: 5 }

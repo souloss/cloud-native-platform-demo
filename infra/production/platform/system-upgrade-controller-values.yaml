@@ -1,0 +1,11 @@
+# The controller only reconciles upgrade.cattle.io Plans. Plans below pin both
+# the K3s version and the maximum number of nodes upgraded concurrently.
+systemUpgradeController:
+  image:
+    repository: rancher/system-upgrade-controller
+    tag: v0.20.1
+
+kubectl:
+  image:
+    repository: rancher/kuberlr-kubectl
+    tag: v8.1.1

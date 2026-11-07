@@ -33,7 +33,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: mysql
-          image: mysql:8.4
+          image: mysql:8.4.13
           imagePullPolicy: IfNotPresent
           envFrom: [{ secretRef: { name: mysql } }]
           ports: [{ name: mysql, containerPort: 3306 }]
@@ -65,7 +65,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:8.8.4-alpine3.23
           imagePullPolicy: IfNotPresent
           args: [redis-server, --appendonly, "yes"]
           ports: [{ name: redis, containerPort: 6379 }]

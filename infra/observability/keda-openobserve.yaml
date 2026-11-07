@@ -1,0 +1,45 @@
+# Local preview wiring for KEDA. Production workload owners can adapt the
+# example in infra/production/autoscaling/keda-openobserve.example.yaml.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: openobserve-prometheus
+  namespace: gofr-demo
+spec:
+  secretTargetRef:
+    - parameter: username
+      name: openobserve-keda
+      key: username
+    - parameter: password
+      name: openobserve-keda
+      key: password
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: orders-openobserve-traffic
+  namespace: gofr-demo
+spec:
+  scaleTargetRef:
+    name: orders
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  pollingInterval: 15
+  cooldownPeriod: 300
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+        scaleDown:
+          stabilizationWindowSeconds: 300
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://openobserve.gofr-demo.svc.cluster.local:5080/api/default/prometheus
+        query: 'sum(rate(app_http_response_count{server_address=~"orders\\.gofr-demo\\.svc\\.cluster\\.local.*"}[2m]))'
+        threshold: "20"
+        activationThreshold: "1"
+        authModes: basic
+      authenticationRef:
+        name: openobserve-prometheus

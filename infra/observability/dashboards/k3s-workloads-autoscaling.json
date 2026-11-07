@@ -1,0 +1,706 @@
+{
+  "title": "K3s Workloads & Autoscaling",
+  "description": "Application traffic, runtime pressure, KEDA metrics and trace latency.",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Default",
+      "panels": [
+        {
+          "id": "workload-1",
+          "type": "metric",
+          "title": "HTTP response series",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT count(DISTINCT service_name) AS services FROM \"app_http_response_count\"",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "app_http_response_count",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Services",
+                    "alias": "services",
+                    "column": "services",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 1
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-2",
+          "type": "area",
+          "title": "HTTP response counters",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "requests"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, service_name AS service, sum(value) AS responses FROM \"app_http_response_count\" GROUP BY ts,service ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "app_http_response_count",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Responses",
+                    "alias": "responses",
+                    "column": "responses",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#5960b2"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 0,
+            "w": 144,
+            "h": 9,
+            "i": 2
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-3",
+          "type": "bar",
+          "title": "HTTP responses by status",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT status, max(value) AS responses FROM \"app_http_response_count\" GROUP BY status ORDER BY responses DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "app_http_response_count",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Status",
+                    "alias": "status",
+                    "column": "status",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Responses",
+                    "alias": "responses",
+                    "column": "responses",
+                    "isDerived": false,
+                    "aggregationFunction": "max",
+                    "color": "#c23531"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 9,
+            "w": 64,
+            "h": 9,
+            "i": 3
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-4",
+          "type": "area",
+          "title": "HTTP response time total",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "seconds"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, service_name AS service, sum(value) AS seconds FROM \"app_http_response_sum\" GROUP BY ts,service ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "app_http_response_sum",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Seconds",
+                    "alias": "seconds",
+                    "column": "seconds",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#53ca53"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 64,
+            "y": 9,
+            "w": 128,
+            "h": 9,
+            "i": 4
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-5",
+          "type": "table",
+          "title": "Go runtime routines",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT service_name AS service, avg(value) AS routines FROM \"app_go_routines\" GROUP BY service ORDER BY service",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "app_go_routines",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Routines",
+                    "alias": "routines",
+                    "column": "routines",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 18,
+            "w": 64,
+            "h": 9,
+            "i": 5
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-6",
+          "type": "table",
+          "title": "Process memory",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "bytes"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT service_name AS service, avg(value) AS memory_bytes FROM \"process_resident_memory_bytes\" GROUP BY service ORDER BY service",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "process_resident_memory_bytes",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Memory",
+                    "alias": "memory_bytes",
+                    "column": "memory_bytes",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 64,
+            "y": 18,
+            "w": 64,
+            "h": 9,
+            "i": 6
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-7",
+          "type": "table",
+          "title": "SQL connections",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT service_name AS service, avg(value) AS open_connections FROM \"app_sql_open_connections\" GROUP BY service ORDER BY service",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "app_sql_open_connections",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Open connections",
+                    "alias": "open_connections",
+                    "column": "open_connections",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 128,
+            "y": 18,
+            "w": 64,
+            "h": 9,
+            "i": 7
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-8",
+          "type": "metric",
+          "title": "KEDA metrics endpoint health",
+          "description": "Scrape health for the KEDA metrics-apiserver endpoint.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT avg(value) AS healthy FROM \"up\" WHERE service_name = 'keda'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "up",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Healthy",
+                    "alias": "healthy",
+                    "column": "healthy",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 27,
+            "w": 48,
+            "h": 8,
+            "i": 8
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-9",
+          "type": "table",
+          "title": "KEDA metrics requests",
+          "description": "KEDA metrics-apiserver gRPC requests observed by the OTel Prometheus receiver.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, sum(value) AS handled FROM \"keda_internal_metricsservice_grpc_client_handled_total\" GROUP BY ts ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "keda_internal_metricsservice_grpc_client_handled_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "aggregationFunction": "histogram",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Handled",
+                    "alias": "handled",
+                    "column": "handled",
+                    "aggregationFunction": "sum",
+                    "isDerived": false
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 27,
+            "w": 96,
+            "h": 8,
+            "i": 9
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "workload-10",
+          "type": "table",
+          "title": "Trace service latency",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "ms"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT service_name AS service, count(*) AS spans, avg(duration) AS avg_duration FROM \"default\" GROUP BY service ORDER BY avg_duration DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Spans",
+                    "alias": "spans",
+                    "column": "spans",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  },
+                  {
+                    "label": "Avg duration",
+                    "alias": "avg_duration",
+                    "column": "avg_duration",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 27,
+            "w": 48,
+            "h": 8,
+            "i": 10
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [],
+    "showDynamicFilters": true
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "15m"
+  }
+}

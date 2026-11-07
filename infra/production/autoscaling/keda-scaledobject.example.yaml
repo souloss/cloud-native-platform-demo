@@ -1,0 +1,30 @@
+# Example only. KEDA owns the generated HPA for this workload. Do not apply a
+# second HorizontalPodAutoscaler to the same Deployment.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: orders-queue
+  namespace: gofr-demo
+spec:
+  scaleTargetRef:
+    name: orders
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  pollingInterval: 15
+  cooldownPeriod: 300
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+        scaleDown:
+          stabilizationWindowSeconds: 300
+  triggers:
+    - type: rabbitmq
+      metadata:
+        hostFromEnv: RABBITMQ_CONNECTION
+        queueName: orders
+        mode: QueueLength
+        value: "100"
+      authenticationRef:
+        name: rabbitmq-trigger

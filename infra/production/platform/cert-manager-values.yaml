@@ -1,0 +1,39 @@
+# cert-manager is the only component that owns Certificate and ACME resources.
+crds:
+  enabled: true
+  keep: true
+
+replicaCount: 2
+
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+webhook:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+cainjector:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

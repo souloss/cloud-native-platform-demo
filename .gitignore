@@ -1,4 +1,5 @@
 .runtime/
+.runtime-preview/
 frontend/web/node_modules/
 frontend/web/dist/
 .env

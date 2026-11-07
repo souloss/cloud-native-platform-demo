@@ -1,0 +1,29 @@
+# K3s server configuration template for the first control-plane node.
+# Replace the example values before writing this file to
+# /etc/rancher/k3s/config.yaml. Do not commit the real token or addresses.
+write-kubeconfig-mode: "0640"
+cluster-init: true
+secrets-encryption: true
+etcd-expose-metrics: true
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
+flannel-backend: none
+disable-network-policy: true
+disable-kube-proxy: true
+disable:
+  - traefik
+  - servicelb
+
+# Optional Kubernetes audit logging. Copy audit-policy.yaml to this path on
+# every server and uncomment these arguments only when APPLY_KUBERNETES_AUDIT
+# is enabled for the observability Collector.
+# kube-apiserver-arg:
+#   - audit-policy-file=/etc/rancher/k3s/audit-policy.yaml
+#   - audit-log-path=/var/log/kubernetes/audit/audit.log
+#   - audit-log-maxage=30
+#   - audit-log-maxbackup=10
+#   - audit-log-maxsize=100
+
+# Keep the API endpoint on a private, stable address (cloud load balancer or VIP).
+# tls-san:
+#   - k3s-api.example.internal

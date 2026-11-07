@@ -2,20 +2,27 @@
 
 SHELL := /usr/bin/env bash
 
-.PHONY: help up verify down check validate test vet build frontend-build lint load-test status resource-status network-status logs clean
+.PHONY: help up demo-up demo-verify demo-down production-platform production-storage production-example-autoscaling observability-dashboards verify down check validate test vet build frontend-build lint load-test status resource-status network-status logs clean
 
 help:
 	@printf '%s\n' \
 		'用法：make <target>' \
 		'' \
 		'集群：' \
-		'  up              创建或更新 k3d 集群并部署演示' \
-		'  verify          执行端到端验收检查' \
+		'  up              demo-up 的兼容别名（本地 k3d + 示例应用）' \
+		'  demo-up         创建本地 k3d 集群并部署示例应用' \
+		'  demo-verify     验收本地示例应用和三类遥测' \
+		'  demo-down       停止端口转发并删除本地示例集群' \
+		'  production-platform  在已有 K3s 上安装生产平台组件' \
+		'  production-storage   安装 Longhorn 或检查外部 CSI' \
+		'  production-example-autoscaling  显式应用 GoFr 示例应用的 KEDA 规则' \
+		'  observability-dashboards  将版本化 Dashboard 应用到 OpenObserve' \
+		'  verify          demo-verify 的兼容别名' \
 		'  status          查看节点、工作负载、Gateway API 和 HPA 状态' \
 		'  resource-status 查看节点和 Pod 的 CPU/内存使用量' \
-		'  network-status  查看 Cilium 和 Envoy Gateway 状态' \
+		'  network-status  查看 Cilium Gateway API 状态' \
 		'  logs            持续查看主要应用和 Gateway 日志' \
-		'  down            停止端口转发并删除本地集群' \
+		'  down            demo-down 的兼容别名' \
 		'' \
 		'开发：' \
 		'  check           执行全部本地质量检查' \
@@ -28,13 +35,34 @@ help:
 		'  clean           删除生成的本地构建产物'
 
 up:
+	$(MAKE) demo-up
+
+demo-up:
 	./scripts/up.sh
 
 verify:
+	$(MAKE) demo-verify
+
+demo-verify:
 	./scripts/verify.sh
 
 down:
+	$(MAKE) demo-down
+
+demo-down:
 	./scripts/down.sh
+
+production-platform:
+	./scripts/production/platform.sh
+
+production-storage:
+	./scripts/production/storage.sh
+
+production-example-autoscaling:
+	./scripts/production/apply-example-autoscaling.sh
+
+observability-dashboards:
+	./scripts/observability/apply-dashboards.sh
 
 check: validate test vet build frontend-build
 
@@ -73,11 +101,11 @@ resource-status:
 network-status:
 	kubectl -n kube-system get pods -l k8s-app=cilium -o wide
 	kubectl -n kube-system get pods -l k8s-app=cilium-envoy -o wide
-	kubectl -n envoy-gateway-system get deploy,pods,svc
+	kubectl -n gofr-demo get gateway,httproute,svc -l gateway.networking.k8s.io/gateway-name=public
 	kubectl get gatewayclass
 
 logs:
-	kubectl -n envoy-gateway-system logs deploy/envoy-gateway --tail=80
+	kubectl -n kube-system logs ds/cilium --tail=80
 	kubectl -n gofr-demo logs deploy/orders --tail=40
 	kubectl -n gofr-demo logs deploy/catalog --tail=40
 

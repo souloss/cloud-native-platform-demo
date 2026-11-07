@@ -1,0 +1,47 @@
+# System Upgrade Controller plans. Change the version only after a staged
+# canary and an etcd snapshot. Keep server and agent plans independent so an
+# agent rollout cannot consume the control-plane disruption budget.
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: k3s-servers
+  namespace: system-upgrade
+spec:
+  version: v1.37.2+k3s1
+  concurrency: 1
+  cordon: true
+  drain:
+    force: false
+    ignoreDaemonSets: true
+    deleteEmptydirData: false
+    timeout: 30m
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+  upgrade:
+    image: rancher/k3s-upgrade:v1.37.2-k3s1
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: k3s-agents
+  namespace: system-upgrade
+spec:
+  version: v1.37.2+k3s1
+  concurrency: 1
+  cordon: true
+  drain:
+    force: false
+    ignoreDaemonSets: true
+    deleteEmptydirData: false
+    timeout: 30m
+  nodeSelector:
+    matchExpressions:
+      - key: kubernetes.io/os
+        operator: In
+        values: [linux]
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  upgrade:
+    image: rancher/k3s-upgrade:v1.37.2-k3s1

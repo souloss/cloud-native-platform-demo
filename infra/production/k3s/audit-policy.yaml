@@ -1,0 +1,29 @@
+# Optional Kubernetes audit policy for K3s. Copy to
+# /etc/rancher/k3s/audit-policy.yaml on each server and add the corresponding
+# kube-apiserver audit arguments to the rendered server config before install.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+rules:
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: [secrets, configmaps]
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: [pods/exec, pods/portforward]
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: [pods, services, nodes, namespaces, events]
+  - level: Metadata
+    resources:
+      - group: apps
+        resources: [deployments, daemonsets, statefulsets, replicasets]
+  - level: Metadata
+    resources:
+      - group: batch
+        resources: [jobs, cronjobs]
+  - level: None

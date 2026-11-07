@@ -1,0 +1,17 @@
+replicaCount: 2
+
+manager:
+  collectorImage:
+    repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+    tag: 0.162.0
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+pdb:
+  create: true
+  minAvailable: 1

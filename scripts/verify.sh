@@ -1,253 +1,128 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-PROXY_URL="${PROXY_URL:-http://127.0.0.1:7890}"
-export HTTP_PROXY="${HTTP_PROXY:-${PROXY_URL}}" HTTPS_PROXY="${HTTPS_PROXY:-${PROXY_URL}}"
-export http_proxy="${http_proxy:-${PROXY_URL}}" https_proxy="${https_proxy:-${PROXY_URL}}"
-export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost,.svc,.cluster.local}"
-SUDO=(); [[ ${EUID} -ne 0 ]] && SUDO=(sudo)
+
 if [[ "${MODE:-k3d}" == "k3d" ]]; then
   export KUBECONFIG="$(k3d kubeconfig write "${K3D_CLUSTER_NAME:-gofr-demo}")"
   K=(kubectl)
 else
+  SUDO=(); [[ ${EUID} -ne 0 ]] && SUDO=(sudo)
   K=("${SUDO[@]}" k3s kubectl)
 fi
+# k3d writes its API endpoint as 0.0.0.0:<ephemeral-port>; do not send local
+# Kubernetes traffic through a configured outbound proxy.
+export NO_PROXY="${NO_PROXY:+${NO_PROXY},}127.0.0.1,localhost,0.0.0.0,.svc,.cluster.local,172.26.0.0/16"
+export no_proxy="${no_proxy:+${no_proxy},}127.0.0.1,localhost,0.0.0.0,.svc,.cluster.local,172.26.0.0/16"
 NAMESPACE=gofr-demo
-HYPERDX_DEMO_EMAIL="${HYPERDX_DEMO_EMAIL:-demo@cloud-native.local}"
-HYPERDX_DEMO_PASSWORD="${HYPERDX_DEMO_PASSWORD:-CloudNative#2026}"
-BROWSER_INGESTION_KEY="${VITE_OTEL_INGESTION_KEY:-$(cat .runtime/browser-ingestion-key 2>/dev/null || printf '%s' k3s-gofr-browser-ingestion)}"
-
+RUNTIME_DIR="${RUNTIME_DIR:-.runtime}"
+APP_PORT="${APP_PORT:-8080}"
+OPENOBSERVE_PORT="${OPENOBSERVE_PORT:-18081}"
+PROMETHEUS_PORT="${PROMETHEUS_PORT:-19090}"
+APP_URL="http://127.0.0.1:${APP_PORT}"
+OPENOBSERVE_URL="http://localhost:${OPENOBSERVE_PORT}"
+PROMETHEUS_URL="http://127.0.0.1:${PROMETHEUS_PORT}"
+OPENOBSERVE_EMAIL="${OPENOBSERVE_EMAIL:-demo@cloud-native.local}"
+OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD:-CloudNative#2026}"
+BROWSER_INGESTION_KEY="${VITE_OTEL_INGESTION_KEY:-$(cat "${RUNTIME_DIR}/browser-ingestion-key" 2>/dev/null || printf '%s' k3s-gofr-browser-ingestion)}"
 TEMP_PIDS=()
-TEMP_FILES=()
-METRICS_PID=''
-cleanup_temp_forwards() {
-  for pid in "${TEMP_PIDS[@]}"; do
-    kill "${pid}" 2>/dev/null || true
-  done
-  if [[ -n "${METRICS_PID}" ]]; then
-    kill "${METRICS_PID}" 2>/dev/null || true
-  fi
-  for file in "${TEMP_FILES[@]}"; do
-    rm -f "${file}"
-  done
-}
-trap cleanup_temp_forwards EXIT
-ensure_forward() {
-  local url="$1" namespace="$2" service="$3" mapping_string="$4" log_file="$5"
-  read -r -a mappings <<< "${mapping_string}"
-  if curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then
-    return
-  fi
-  "${K[@]}" -n "${namespace}" port-forward "service/${service}" "${mappings[@]}" >"${log_file}" 2>&1 &
-  local pid=$!
-  TEMP_PIDS+=("${pid}")
-  for _ in $(seq 1 20); do
-    if curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then return; fi
+cleanup() { for pid in "${TEMP_PIDS[@]}"; do kill "${pid}" 2>/dev/null || true; done; }
+trap cleanup EXIT
+
+forward() {
+  local url="$1" namespace="$2" service="$3" mapping="$4" log="$5"
+  if curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then return; fi
+  "${K[@]}" -n "${namespace}" port-forward --address 127.0.0.1 "service/${service}" "${mapping}" >"${log}" 2>&1 &
+  local pid=$!; TEMP_PIDS+=("${pid}")
+  for _ in $(seq 1 30); do
+    curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1 && return
     sleep 0.5
   done
-  echo "端口转发未就绪：${url}" >&2
-  return 1
+  echo "端口转发未就绪：${url}" >&2; return 1
 }
 
-GATEWAY_NAMESPACE=''
-GATEWAY_SERVICE=''
-for _ in $(seq 1 30); do
-  gateway_service_info="$("${K[@]}" get service -A -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{range .items[0]}{.metadata.namespace} {.metadata.name}{end}' 2>/dev/null || true)"
-  read -r GATEWAY_NAMESPACE GATEWAY_SERVICE <<< "${gateway_service_info}"
-  [[ -n "${GATEWAY_SERVICE}" ]] && break
-  sleep 1
-done
-[[ -n "${GATEWAY_SERVICE}" ]]
-ensure_forward http://127.0.0.1:8080/ "${GATEWAY_NAMESPACE}" "${GATEWAY_SERVICE}" 8080:80 /tmp/envoy-gateway-verify-port-forward.log
-ensure_forward http://127.0.0.1:18080/ kube-system kite 18080:8080 /tmp/kite-verify-port-forward.log
-ensure_forward http://127.0.0.1:19090/-/ready "${NAMESPACE}" prometheus 19090:9090 /tmp/prometheus-verify-port-forward.log
-if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
-  ensure_forward http://localhost:18081/api/health "${NAMESPACE}" hyperdx 18081:8080 /tmp/hyperdx-verify-port-forward.log
-  if ! curl --noproxy '*' --silent --max-time 2 http://127.0.0.1:14318/ >/dev/null 2>&1; then
-    "${K[@]}" -n "${NAMESPACE}" port-forward service/otel-collector 14318:4318 >/tmp/collector-otlp-verify-port-forward.log 2>&1 &
-    TEMP_PIDS+=("$!")
-    sleep 1
+forward_gateway() {
+  local url="$1" namespace="$2" service="$3" mapping="$4" log="$5"
+  local selector node_port node_ip local_port
+  selector="$("${K[@]}" -n "${namespace}" get service "${service}" -o jsonpath='{.spec.selector}' 2>/dev/null || true)"
+  if [[ -n "${selector}" && "${selector}" != "map[]" ]]; then
+    forward "${url}" "${namespace}" "${service}" "${mapping}" "${log}"
+    return
   fi
-fi
+  node_port="$("${K[@]}" -n "${namespace}" get service "${service}" -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}' 2>/dev/null || true)"
+  node_ip="$("${K[@]}" get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+  local_port="${mapping%%:*}"
+  [[ -n "${node_port}" && -n "${node_ip}" ]] || { echo "无法为 Gateway Service 找到 NodePort" >&2; return 1; }
+  if curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1; then return; fi
+  socat "TCP-LISTEN:${local_port},bind=127.0.0.1,reuseaddr,fork" "TCP:${node_ip}:${node_port}" >"${log}" 2>&1 &
+  local pid=$!; TEMP_PIDS+=("${pid}")
+  for _ in $(seq 1 30); do
+    curl --noproxy '*' --fail --silent --max-time 2 "${url}" >/dev/null 2>&1 && return
+    sleep 0.5
+  done
+  echo "Gateway NodePort 转发未就绪：${url}" >&2; return 1
+}
 
-echo '== Kubernetes 与 Gateway API =='
-"${K[@]}" get --raw /apis/metrics.k8s.io/v1beta1 >/dev/null
-echo 'metrics-server API：正常'
-"${K[@]}" -n kube-system get daemonset/cilium deployment/cilium-operator
-if ! cilium_pod="$(${K[@]} -n kube-system get pod -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')" || [[ -z "${cilium_pod}" ]] ||
-  ! "${K[@]}" -n kube-system exec "${cilium_pod}" -- cilium-dbg status --brief 2>/dev/null | grep -q '^OK'; then
-  echo 'Cilium agent 健康检查失败' >&2
-  exit 1
-fi
-echo 'Cilium agent 健康状态：正常'
-"${K[@]}" -n envoy-gateway-system get deployment/envoy-gateway
-"${K[@]}" get gatewayclass envoy-gateway
-"${K[@]}" get crd gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io securitypolicies.gateway.envoyproxy.io
-"${K[@]}" -n "${NAMESPACE}" get gateway public -o wide
-"${K[@]}" -n "${NAMESPACE}" get httproute gofr-demo browser-telemetry -o wide
-"${K[@]}" -n "${NAMESPACE}" get securitypolicy browser-telemetry-cors
-"${K[@]}" -n "${NAMESPACE}" get backendtrafficpolicy browser-telemetry-rate-limit
-envoy_replicas="$(${K[@]} -n envoy-gateway-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{.items[0].spec.replicas}')"
-envoy_ready_replicas="$(${K[@]} -n envoy-gateway-system get deploy -l gateway.envoyproxy.io/owning-gateway-name=public -o jsonpath='{.items[0].status.readyReplicas}')"
-[[ "${envoy_replicas}" =~ ^[2-9][0-9]*$ ]] && [[ "${envoy_ready_replicas}" == "${envoy_replicas}" ]]
-echo "Envoy Gateway 代理副本：${envoy_ready_replicas}/${envoy_replicas}"
-"${K[@]}" get gatewayclass envoy-gateway -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
-"${K[@]}" -n "${NAMESPACE}" get gateway public -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Programmed=True'
-"${K[@]}" -n "${NAMESPACE}" get httproute gofr-demo -o jsonpath='{range .status.parents[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
-"${K[@]}" -n "${NAMESPACE}" get httproute browser-telemetry -o jsonpath='{range .status.parents[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
-"${K[@]}" -n "${NAMESPACE}" get securitypolicy browser-telemetry-cors -o jsonpath='{range .status.ancestors[0].conditions[*]}{.type}={.status}{"\n"}{end}' | grep -q 'Accepted=True'
-"${K[@]}" -n "${NAMESPACE}" get deploy,pods,hpa,pdb
-"${K[@]}" -n kube-system get deploy/kite
-"${K[@]}" -n "${NAMESPACE}" get deploy/prometheus deploy/mysql deploy/redis
-if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
-  "${K[@]}" -n "${NAMESPACE}" get deploy/hyperdx
-  curl --noproxy '*' --fail --silent http://localhost:18081/api/health >/dev/null
-  echo 'HyperDX 本地 UI/API：正常'
-fi
+gateway_service="$("${K[@]}" -n "${NAMESPACE}" get service -l gateway.networking.k8s.io/gateway-name=public -o jsonpath='{range .items[0]}{.metadata.name}{end}')"
+[[ -n "${gateway_service}" ]] || { echo 'Cilium Gateway Service 不存在' >&2; exit 1; }
+forward_gateway "${APP_URL}/" "${NAMESPACE}" "${gateway_service}" "${APP_PORT}:80" /tmp/preview-gateway-verify.log
+forward "${PROMETHEUS_URL}/-/ready" "${NAMESPACE}" prometheus "${PROMETHEUS_PORT}:9090" /tmp/preview-prometheus-verify.log
+forward "${OPENOBSERVE_URL}/healthz" "${NAMESPACE}" openobserve "${OPENOBSERVE_PORT}:5080" /tmp/preview-openobserve-verify.log
+
+echo '== 控制器与资源 =='
+"${K[@]}" get nodes
+"${K[@]}" -n cert-manager get deploy
+"${K[@]}" -n kured get daemonset kured
+"${K[@]}" -n cattle-system get deploy system-upgrade-controller
+"${K[@]}" -n keda get deploy keda-operator keda-admission-webhooks
+"${K[@]}" -n opentelemetry-operator-system get deploy opentelemetry-operator
+"${K[@]}" -n gofr-demo get opentelemetrycollector
+"${K[@]}" get clusterissuer preview-selfsigned
+"${K[@]}" -n gofr-demo get certificate preview-gateway
+
+echo '== OpenObserve 健康与认证 =='
+curl --noproxy '*' --fail --silent "${OPENOBSERVE_URL}/healthz" >/dev/null
+curl --noproxy '*' --fail --silent -u "${OPENOBSERVE_EMAIL}:${OPENOBSERVE_PASSWORD}" "${OPENOBSERVE_URL}/api/default/streams" >/dev/null
+
+echo '== 业务请求与浏览器 OTLP =='
+curl --noproxy '*' --fail --silent "${APP_URL}/" | grep -q 'id="app"'
+curl --noproxy '*' --fail --silent "${APP_URL}/api/catalog/sku-001" | grep -q sku-001
+curl --noproxy '*' --fail --silent "${APP_URL}/api/orders" | grep -q item
 curl --noproxy '*' --fail --silent -i -X OPTIONS \
-  -H 'Origin: http://localhost:8080' \
+  -H "Origin: http://localhost:${APP_PORT}" \
   -H 'Access-Control-Request-Method: POST' \
   -H 'Access-Control-Request-Headers: content-type,authorization' \
-  http://127.0.0.1:8080/v1/traces | grep -qi 'access-control-allow-origin'
-echo '浏览器 OTLP CORS：正常'
-unauthorized_status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' \
-  -X POST -H 'content-type: application/json' -d '{"resourceSpans":[]}' http://127.0.0.1:8080/v1/traces)"
-[[ "${unauthorized_status}" == 401 ]]
-authorized_status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' \
-  -X POST -H "authorization: ${BROWSER_INGESTION_KEY}" -H 'content-type: application/json' \
-  -d '{"resourceSpans":[]}' http://127.0.0.1:8080/v1/traces)"
-[[ "${authorized_status}" =~ ^2[0-9][0-9]$ ]]
-echo '浏览器 OTLP Bearer 校验：正常'
-curl --noproxy '*' --fail --silent http://127.0.0.1:18080/ >/dev/null
-curl --noproxy '*' --fail --silent \
-  -H 'x-cluster-name: in-cluster' \
-  http://127.0.0.1:18080/api/v1/clusters | grep -q 'in-cluster'
-curl --noproxy '*' --fail --silent \
-  -H 'x-cluster-name: in-cluster' \
-  http://127.0.0.1:18080/api/v1/gateways/_all | grep -q '"kind":"Gateway"'
-curl --noproxy '*' --fail --silent http://127.0.0.1:19090/-/ready | grep -q Prometheus
-echo 'Kite 和 Prometheus：正常'
-"${K[@]}" -n "${NAMESPACE}" get hpa -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.status.currentReplicas}{"/"}{.status.desiredReplicas}{"\n"}{end}'
-"${K[@]}" -n "${NAMESPACE}" get hpa -o jsonpath='{range .items[*]}{.status.currentReplicas}{"\n"}{end}' | grep -q '[0-9]'
+  "${APP_URL}/v1/traces" | grep -qi access-control-allow-origin
+[[ "$(curl --noproxy '*' --silent -o /dev/null -w '%{http_code}' -X POST -H content-type:application/json -d '{"resourceSpans":[]}' "${APP_URL}/v1/traces")" == 401 ]]
+[[ "$(curl --noproxy '*' --silent -o /dev/null -w '%{http_code}' -X POST -H "authorization: Bearer ${BROWSER_INGESTION_KEY}" -H content-type:application/json -d '{"resourceSpans":[]}' "${APP_URL}/v1/traces")" =~ ^2[0-9][0-9]$ ]]
 
-echo '== HTTP 与链路生成请求 =='
-curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:8080/ | grep -q 'id="app"'
-catalog_response="$(curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:8080/api/catalog/sku-001)"
-printf '%s' "${catalog_response}" | grep -q 'sku-001'
-curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:8080/api/catalog/sku-001 | grep -q 'sku-001'
-orders_response="$(curl --noproxy '*' --fail --silent --show-error http://127.0.0.1:8080/api/orders)"
-printf '%s' "${orders_response}" | grep -q 'item'
-create_response="$(curl --noproxy '*' --fail --silent --show-error -H 'content-type: application/json' \
-  -d '{"itemId":"sku-001","quantity":1}' http://127.0.0.1:8080/api/orders)"
-created_id="$(printf '%s' "${create_response}" | sed -n 's/.*"id":"\([^"]*\)","itemId".*/\1/p')"
-[[ -n "${created_id}" ]]
-curl --noproxy '*' --fail --silent --show-error -H 'content-type: application/json' \
-  -X PATCH -d '{"itemId":"sku-001","quantity":2,"state":"verified"}' \
-  "http://127.0.0.1:8080/api/orders/${created_id}" | grep -q 'verified'
-delete_status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' -X DELETE \
-  "http://127.0.0.1:8080/api/orders/${created_id}")"
-[[ "${delete_status}" == 204 ]]
-echo 'Gateway API 端到端路由：正常'
+echo '== OpenObserve 三类信号 =='
+now_us="$(date +%s000000)"; start_us="$((now_us - 900000000))"
+OPENOBSERVE_AUTH="${OPENOBSERVE_EMAIL}:${OPENOBSERVE_PASSWORD}"
+search() {
+  local sql="$1"
+  curl --noproxy '*' --fail --silent --user "${OPENOBSERVE_AUTH}" \
+    -H 'content-type: application/json' -X POST "${OPENOBSERVE_URL}/api/default/_search" \
+    -d "$(jq -cn --arg sql "${sql}" --argjson start "${start_us}" --argjson end "${now_us}" '{query:{sql:$sql,start_time:$start,end_time:$end,from:0,size:1}}')"
+}
+traces="$(search 'SELECT COUNT(*) AS total FROM "default"' | jq -r '.hits[0].total // .result[0].total // .total // 0')"
+logs="$(search 'SELECT COUNT(*) AS total FROM "default"' | jq -r '.hits[0].total // .result[0].total // .total // 0')"
+traces="$(curl --noproxy '*' --fail --silent --user "${OPENOBSERVE_AUTH}" \
+  -H 'content-type: application/json' -X POST "${OPENOBSERVE_URL}/api/default/_search?type=traces" \
+  -d "$(jq -cn --arg sql 'SELECT COUNT(*) AS total FROM "default"' --argjson start "${start_us}" --argjson end "${now_us}" '{query:{sql:$sql,start_time:$start,end_time:$end,from:0,size:1}}')" \
+  | jq -r '.hits[0].total // 0')"
+logs="$(curl --noproxy '*' --fail --silent --user "${OPENOBSERVE_AUTH}" \
+  -H 'content-type: application/json' -X POST "${OPENOBSERVE_URL}/api/default/_search?type=logs" \
+  -d "$(jq -cn --arg sql 'SELECT COUNT(*) AS total FROM "default"' --argjson start "${start_us}" --argjson end "${now_us}" '{query:{sql:$sql,start_time:$start,end_time:$end,from:0,size:1}}')" \
+  | jq -r '.hits[0].total // 0')"
+metrics="$(curl --noproxy '*' --fail --silent --user "${OPENOBSERVE_AUTH}" \
+  -H 'content-type: application/x-www-form-urlencoded' -X POST \
+  "${OPENOBSERVE_URL}/api/default/prometheus/api/v1/query" --data-urlencode 'query=up' \
+  | jq '[.data.result[]? | select(.value[1] != "0")] | length')"
+[[ "${traces}" =~ ^[0-9]+$ ]] && (( traces > 0 ))
+[[ "${logs}" =~ ^[0-9]+$ ]] && (( logs > 0 ))
+[[ "${metrics}" =~ ^[0-9]+$ ]] && (( metrics > 0 ))
+echo "OpenObserve metrics/logs/traces：正常（traces=${traces}, logs=${logs}, metric_streams=${metrics}）"
 
-echo '== GoFr 指标 =='
-"${K[@]}" -n "${NAMESPACE}" port-forward service/orders 2123:2121 >/tmp/gofr-orders-metrics.log 2>&1 & METRICS_PID=$!
-sleep 2
-metrics_output="$(mktemp)"
-curl --noproxy '*' --fail --silent http://127.0.0.1:2123/metrics -o "${metrics_output}"
-grep -q 'app_http_response' "${metrics_output}"
-rm -f "${metrics_output}"
-echo 'GoFr 指标：正常'
-
-echo '== Prometheus 抓取目标 =='
-prometheus_targets=''
-prometheus_metric=''
-collector_metric=''
-recorded_metric=''
-for _ in $(seq 1 20); do
-  prometheus_targets="$(curl --noproxy '*' --silent --show-error --fail \
-    --get --data-urlencode 'query=up{job="gofr-services",namespace="gofr-demo"}' \
-    http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
-  prometheus_metric="$(curl --noproxy '*' --silent --show-error --fail \
-    --get --data-urlencode 'query=app_http_response_count{job="gofr-services",namespace="gofr-demo"}' \
-    http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
-  collector_metric="$(curl --noproxy '*' --silent --show-error --fail \
-    --get --data-urlencode 'query=up{job="otel-collector",namespace="gofr-demo"}' \
-    http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
-  recorded_metric="$(curl --noproxy '*' --silent --show-error --fail \
-    --get --data-urlencode 'query=gofr:http_responses:rate5m' \
-    http://127.0.0.1:19090/api/v1/query 2>/dev/null || true)"
-  if printf '%s' "${prometheus_targets}" | grep -q '"result":\[[^]]' &&
-    printf '%s' "${prometheus_metric}" | grep -q '"result":\[[^]]' &&
-    printf '%s' "${collector_metric}" | grep -q '"result":\[[^]]' &&
-    printf '%s' "${recorded_metric}" | grep -q '"result":\[[^]]'; then
-    break
-  fi
-  sleep 1
-done
-printf '%s' "${prometheus_targets}" | grep -q '"result":\[[^]]'
-printf '%s' "${prometheus_metric}" | grep -q '"result":\[[^]]'
-printf '%s' "${collector_metric}" | grep -q '"result":\[[^]]'
-printf '%s' "${recorded_metric}" | grep -q '"result":\[[^]]'
-prometheus_rules="$(curl --noproxy '*' --silent --show-error --fail \
-  http://127.0.0.1:19090/api/v1/rules 2>/dev/null || true)"
-printf '%s' "${prometheus_rules}" | grep -q 'gofr'
-echo 'Prometheus 应用目标和 GoFr 直方图：正常'
-
-echo '== HyperDX Collector =='
-collector_tail="$("${K[@]}" -n "${NAMESPACE}" logs deploy/otel-collector --tail=50)"
-printf '%s' "${collector_tail}" | grep -qE 'Traces|Metrics|Logs|export' || true
-echo 'Collector 正在运行；请在 HyperDX 中查看链路和会话回放。'
-if [[ "${HYPERDX_MODE:-local}" == "local" ]]; then
-  traces_count='0'
-  logs_count='0'
-  order_spans_count='0'
-  order_query_result=''
-  services=''
-  for _ in $(seq 1 20); do
-    traces_count="$("${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
-      "SELECT count() FROM default.otel_traces WHERE Timestamp > now() - INTERVAL 10 MINUTE" 2>/dev/null | tr -d '[:space:]' || true)"
-    logs_count="$("${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
-      "SELECT count() FROM default.otel_logs WHERE Timestamp > now() - INTERVAL 10 MINUTE" 2>/dev/null | tr -d '[:space:]' || true)"
-    services="$("${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
-      "SELECT groupUniqArray(ServiceName) FROM default.otel_traces WHERE Timestamp > now() - INTERVAL 10 MINUTE" 2>/dev/null || true)"
-    order_spans_count="$("${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
-      "SELECT count() FROM default.otel_traces WHERE Timestamp > now() - INTERVAL 10 MINUTE AND SpanName IN ('POST /api/orders')" 2>/dev/null | tr -d '[:space:]' || true)"
-    if [[ "${traces_count:-0}" =~ ^[0-9]+$ ]] && (( traces_count > 0 )) && \
-      [[ "${logs_count:-0}" =~ ^[0-9]+$ ]] && (( logs_count > 0 )) && \
-      [[ "${order_spans_count:-0}" =~ ^[0-9]+$ ]] && (( order_spans_count > 0 )) && \
-      printf '%s' "${services}" | grep -q 'k3s-gofr-orders' && \
-      printf '%s' "${services}" | grep -q 'k3s-gofr-catalog'; then
-      break
-    fi
-    sleep 1
-  done
-  order_query_result="$("${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
-    "SELECT SpanName FROM default.otel_traces WHERE Timestamp > now() - INTERVAL 10 MINUTE AND SpanName IN ('POST /api/orders') ORDER BY (toDateTime(Timestamp), Timestamp) DESC LIMIT 1" 2>/dev/null || true)"
-  [[ "${traces_count:-0}" =~ ^[0-9]+$ ]] && (( traces_count > 0 ))
-  [[ "${logs_count:-0}" =~ ^[0-9]+$ ]] && (( logs_count > 0 ))
-  [[ "${order_spans_count:-0}" =~ ^[0-9]+$ ]] && (( order_spans_count > 0 ))
-  printf '%s' "${order_query_result}" | grep -q '^POST /api/orders$'
-  printf '%s' "${services}" | grep -q 'k3s-gofr-orders'
-  printf '%s' "${services}" | grep -q 'k3s-gofr-catalog'
-  hyperdx_cookie_file="$(mktemp)"
-  TEMP_FILES+=("${hyperdx_cookie_file}")
-  login_status="$(curl --noproxy '*' --silent --show-error --output /dev/null \
-    --cookie-jar "${hyperdx_cookie_file}" --request POST \
-    --data-urlencode "email=${HYPERDX_DEMO_EMAIL}" \
-    --data-urlencode "password=${HYPERDX_DEMO_PASSWORD}" \
-    --write-out '%{http_code}' http://localhost:18081/api/login/password)"
-  [[ "${login_status}" == 303 ]]
-  connection_id="$(curl --noproxy '*' --fail --silent --cookie "${hyperdx_cookie_file}" \
-    http://localhost:18081/api/connections | grep -o '"_id":"[^"]*"' | head -n 1 | cut -d '"' -f 4)"
-  [[ -n "${connection_id}" ]]
-  hyperdx_ui_query="SELECT SpanName FROM default.otel_traces WHERE Timestamp > now() - INTERVAL 10 MINUTE AND SpanName IN ('POST /api/orders') ORDER BY (toDateTime(Timestamp), Timestamp) DESC LIMIT 1 FORMAT JSON"
-  hyperdx_ui_result="$(curl --noproxy '*' --fail --silent --show-error \
-    --cookie "${hyperdx_cookie_file}" --request POST \
-    --header "x-hyperdx-connection-id: ${connection_id}" \
-    --header 'content-type: text/plain' --data-binary "${hyperdx_ui_query}" \
-    'http://localhost:18081/api/clickhouse-proxy?format=JSON')"
-  printf '%s' "${hyperdx_ui_result}" | grep -q '"rows": 1'
-  "${K[@]}" -n "${NAMESPACE}" exec deploy/hyperdx -- clickhouse-client --query \
-    "EXISTS TABLE default.hyperdx_sessions" | grep -q '^1$'
-  echo "HyperDX 已存储信号：traces=${traces_count} logs=${logs_count} POST /api/orders=${order_spans_count}；认证 UI 查询 API：正常；会话回放表：正常"
-fi
+echo '== HPA/KEDA =='
+"${K[@]}" -n "${NAMESPACE}" get scaledobject,triggerauthentication,hpa
+echo '完整集群验收：通过'

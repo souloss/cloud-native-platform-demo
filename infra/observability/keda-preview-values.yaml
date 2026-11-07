@@ -1,0 +1,8 @@
+# The k3d preview has one reliable scheduling path for controller images. The
+# production profile keeps two replicas in infra/production/platform/keda-values.yaml.
+operator:
+  replicaCount: 1
+metricsServer:
+  replicaCount: 1
+webhooks:
+  replicaCount: 1

@@ -1,0 +1,48 @@
+# Optional Cilium Hubble flow event collector. Enable Cilium's static Hubble
+# exporter with ENABLE_HUBBLE_EVENTS=true before applying this resource.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: hubble-events
+  namespace: observability
+spec:
+  mode: daemonset
+  serviceAccount: otel-agent
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  volumes:
+    - name: hostfs
+      hostPath: { path: / }
+  volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 384Mi }
+  config:
+    receivers:
+      filelog/hubble:
+        include: [/hostfs/var/run/cilium/hubble/events.log]
+        start_at: end
+        include_file_path: true
+        operators:
+          - type: json_parser
+            parse_from: body
+          - type: add
+            field: attributes.log.source
+            value: cilium-hubble-flow
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 256, spike_limit_mib: 64 }
+      k8sattributes: {}
+      batch: { send_batch_size: 128, timeout: 2s }
+    exporters:
+      otlp/gateway:
+        endpoint: gateway-collector.observability.svc.cluster.local:4317
+        tls: { insecure: true }
+        retry_on_failure: { enabled: true, max_elapsed_time: 300s }
+    service:
+      pipelines:
+        logs:
+          receivers: [filelog/hubble]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]

@@ -1,0 +1,177 @@
+# OpenObserve distributed profile. Credentials and cloud storage keys are read
+# from the external Secret named openobserve-secrets; no secret belongs in Git.
+fullnameOverride: openobserve
+externalSecret:
+  enabled: true
+  name: openobserve-secrets
+
+image:
+  oss:
+    repository: o2cr.ai/openobserve/openobserve
+    tag: v1.1.2
+  pullPolicy: IfNotPresent
+
+replicaCount:
+  router: 2
+  ingester: 2
+  querier: 2
+  scheduler: 2
+  compactor: 2
+  alertquerier: 1
+  reportserver: 1
+  o2ai: 0
+
+config:
+  ZO_LOCAL_MODE: "false"
+  ZO_CLUSTER_NAME: production
+  ZO_CLUSTER_COORDINATOR: nats
+  ZO_QUEUE_STORE: nats
+  ZO_META_STORE: postgres
+  ZO_HTTP_PORT: "5080"
+  ZO_GRPC_PORT: "5081"
+  ZO_WEB_URL: https://observe.example.com
+  ZO_S3_PROVIDER: s3
+  ZO_S3_SERVER_URL: https://s3.example.com
+  ZO_S3_REGION_NAME: replace-me
+  ZO_S3_BUCKET_NAME: replace-me-openobserve
+  ZO_S3_BUCKET_PREFIX: production/
+  ZO_S3_FEATURE_FORCE_HOSTED_STYLE: "true"
+  ZO_RUM_ENABLED: "true"
+  ZO_RUM_APPLICATION_ID: replace-after-creating-rum-application
+  ZO_RUM_SITE: https://observe.example.com
+  ZO_RUM_SERVICE: web
+  ZO_RUM_ENV: production
+  ZO_RUM_ORGANIZATION_IDENTIFIER: default
+  ZO_SSRF_ALLOW_LOOPBACK: "false"
+  ZO_SKIP_SSRF_CHECKS: "false"
+  ZO_TELEMETRY: "false"
+  ZO_USAGE_REPORTING_ENABLED: "false"
+  RUST_LOG: info
+
+service:
+  type: ClusterIP
+  http_port: 5080
+  grpc_port: 5081
+
+serviceIngester:
+  type: ClusterIP
+  http_port: 5080
+  grpc_port: 5081
+
+# Durable data belongs in object storage. These PVCs are caches/WALs and must
+# use the selected production CSI StorageClass named `fast-rwo`. The blueprint
+# can provide it with Longhorn or a cloud-provider CSI driver; do not install
+# both providers for the same cluster.
+scheduler:
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: fast-rwo
+ingester:
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: fast-rwo
+querier:
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: fast-rwo
+
+nats:
+  enabled: true
+  config:
+    cluster:
+      enabled: true
+      replicas: 3
+    jetstream:
+      enabled: true
+      fileStore:
+        enabled: true
+        pvc:
+          enabled: true
+          size: 50Gi
+          storageClassName: fast-rwo
+  podTemplate:
+    topologySpreadConstraints:
+      kubernetes.io/hostname:
+        maxSkew: 1
+        whenUnsatisfiable: DoNotSchedule
+
+# Use a managed PostgreSQL service or a separately operated CloudNativePG
+# cluster. The chart's bundled PostgreSQL is suitable for a small cluster, not
+# for the failure domain of a production observability backend.
+postgres:
+  enabled: false
+
+minio:
+  enabled: false
+
+enterprise:
+  enabled: false
+  openfga:
+    enabled: false
+
+affinity:
+  router:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                role: router
+  ingester:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                role: ingester
+  querier:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                role: querier
+  scheduler:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                role: scheduler
+  compactor:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                role: compactor
+
+resources:
+  router:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  ingester:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: "2", memory: 4Gi }
+  querier:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: "2", memory: 4Gi }
+  scheduler:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 2Gi }
+  compactor:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: "2", memory: 4Gi }

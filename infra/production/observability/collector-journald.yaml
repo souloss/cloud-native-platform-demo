@@ -1,0 +1,52 @@
+# Optional host signal collector. Apply only when the nodes use systemd and
+# journald access has been approved. The base collector must be applied first.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: host-journald
+  namespace: observability
+spec:
+  mode: daemonset
+  serviceAccount: otel-agent
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    allowPrivilegeEscalation: false
+  podSecurityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  volumes:
+    - name: hostfs
+      hostPath: { path: / }
+  volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 384Mi }
+  config:
+    receivers:
+      journald:
+        root_path: /hostfs
+        journalctl_path: /usr/bin/journalctl
+        directory: /run/log/journal
+        start_at: end
+        units: [k3s.service, k3s-agent.service, containerd.service]
+        convert_to_semantic_conventions: true
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 256, spike_limit_mib: 64 }
+      k8sattributes: {}
+      batch: { send_batch_size: 128, timeout: 2s }
+    exporters:
+      otlp/gateway:
+        endpoint: gateway-collector.observability.svc.cluster.local:4317
+        tls: { insecure: true }
+        retry_on_failure: { enabled: true, max_elapsed_time: 300s }
+    service:
+      pipelines:
+        logs:
+          receivers: [journald]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]

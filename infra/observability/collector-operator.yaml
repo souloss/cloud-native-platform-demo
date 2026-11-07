@@ -1,0 +1,256 @@
+# Local preview of the production topology. The Operator owns both collectors:
+# a node Agent for container logs and a two-replica Gateway for OTLP signals.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-gateway
+  namespace: gofr-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-agent
+  namespace: gofr-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-preview-k8sattributes
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces, nodes, nodes/stats, services, endpoints, replicationcontrollers, resourcequotas, persistentvolumeclaims, persistentvolumes]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets, deployments, daemonsets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-preview-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-preview-k8sattributes
+subjects:
+  - kind: ServiceAccount
+    name: otel-gateway
+    namespace: gofr-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-preview-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-preview-k8sattributes
+subjects:
+  - kind: ServiceAccount
+    name: otel-agent
+    namespace: gofr-demo
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: gateway
+  namespace: gofr-demo
+spec:
+  mode: deployment
+  replicas: 2
+  serviceAccount: otel-gateway
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  env:
+    - name: OPENOBSERVE_AUTH
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-local
+          key: authorization
+    - name: BROWSER_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-local
+          key: browser-api-key
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 768Mi }
+  config:
+    extensions:
+      health_check: { endpoint: 0.0.0.0:13133 }
+      bearertokenauth/browser:
+        token: ${env:BROWSER_API_KEY}
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: 0.0.0.0:4317 }
+          http:
+            endpoint: 0.0.0.0:4318
+            auth:
+              authenticator: bearertokenauth/browser
+            cors:
+              # The browser endpoint is bearer-token protected; wildcard
+              # CORS keeps the preview usable on any chosen local port.
+              allowed_origins: ["*"]
+              allowed_headers: ["*"]
+      prometheus/apps:
+        config:
+          scrape_configs:
+            - job_name: gofr-services
+              scrape_interval: 15s
+              static_configs:
+                - targets: [catalog.gofr-demo.svc.cluster.local:2121, orders.gofr-demo.svc.cluster.local:2121]
+      prometheus/keda:
+        config:
+          scrape_configs:
+            - job_name: keda
+              scrape_interval: 30s
+              static_configs:
+                - targets: [keda-operator-metrics-apiserver.keda.svc.cluster.local:8080]
+      prometheus/otel:
+        config:
+          scrape_configs:
+            - job_name: otel-gateway
+              scrape_interval: 30s
+              static_configs:
+                - targets: [gateway-collector-monitoring.gofr-demo.svc.cluster.local:8888]
+            - job_name: otel-agent
+              scrape_interval: 30s
+              static_configs:
+                - targets: [agent-collector-monitoring.gofr-demo.svc.cluster.local:8888]
+      prometheus/hubble:
+        config:
+          scrape_configs:
+            - job_name: hubble
+              scrape_interval: 30s
+              static_configs:
+                - targets: [hubble-metrics.kube-system.svc.cluster.local:9965]
+      k8s_cluster:
+        auth_type: serviceAccount
+        collection_interval: 30s
+        node_conditions_to_report: [Ready, MemoryPressure, DiskPressure, PIDPressure]
+        allocatable_types_to_report: [cpu, memory, ephemeral-storage]
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 576, spike_limit_mib: 128 }
+      k8sattributes: {}
+      attributes/redact:
+        actions:
+          - { key: http.request.header.authorization, action: delete }
+          - { key: http.request.header.cookie, action: delete }
+          - { key: user.email, action: delete }
+      batch: { send_batch_size: 256, timeout: 2s }
+    exporters:
+      otlphttp/openobserve:
+        endpoint: http://openobserve:5080/api/default
+        headers:
+          Authorization: ${env:OPENOBSERVE_AUTH}
+        retry_on_failure: { enabled: true, max_elapsed_time: 120s }
+        sending_queue: { enabled: true, queue_size: 2000 }
+    service:
+      extensions: [health_check, bearertokenauth/browser]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, attributes/redact, batch]
+          exporters: [otlphttp/openobserve]
+        metrics:
+          receivers: [otlp, prometheus/apps, prometheus/keda, prometheus/otel, prometheus/hubble, k8s_cluster]
+          processors: [memory_limiter, k8sattributes, attributes/redact, batch]
+          exporters: [otlphttp/openobserve]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, attributes/redact, batch]
+          exporters: [otlphttp/openobserve]
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: agent
+  namespace: gofr-demo
+spec:
+  mode: daemonset
+  serviceAccount: otel-agent
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  env:
+    - name: GATEWAY_ENDPOINT
+      value: gateway-collector.gofr-demo.svc.cluster.local:4317
+    - name: K8S_NODE_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+  volumes:
+    - name: varlogpods
+      hostPath: { path: /var/log/pods }
+    - name: hostfs
+      hostPath: { path: / }
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 384Mi }
+  config:
+    receivers:
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        exclude:
+          - /var/log/pods/gofr-demo_agent-collector-*/*/*.log
+          - /var/log/pods/gofr-demo_gateway-collector-*/*/*.log
+        start_at: end
+        include_file_path: true
+        operators:
+          - type: container
+      hostmetrics:
+        collection_interval: 30s
+        root_path: /hostfs
+        scrapers:
+          cpu:
+            metrics:
+              system.cpu.utilization: { enabled: true }
+          disk: {}
+          filesystem:
+            metrics:
+              system.filesystem.utilization: { enabled: true }
+          load: {}
+          memory:
+            metrics:
+              system.memory.utilization: { enabled: true }
+          network: {}
+          paging: {}
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: ${env:K8S_NODE_IP}:10250
+        insecure_skip_verify: true
+        metric_groups: [node, pod, container, volume]
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 288, spike_limit_mib: 64 }
+      k8sattributes: {}
+      batch: { send_batch_size: 128, timeout: 2s }
+    exporters:
+      otlp/gateway:
+        endpoint: ${env:GATEWAY_ENDPOINT}
+        tls: { insecure: true }
+        retry_on_failure: { enabled: true, max_elapsed_time: 120s }
+    service:
+      pipelines:
+        metrics:
+          receivers: [hostmetrics, kubeletstats]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]
+        logs:
+          receivers: [filelog]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]

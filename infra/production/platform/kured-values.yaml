@@ -1,0 +1,34 @@
+# Kured drains one node at a time when the OS creates /var/run/reboot-required.
+# It must remain conservative around application PDBs and the etcd control plane.
+image:
+  repository: ghcr.io/kubereboot/kured
+  tag: "1.23.0"
+  pullPolicy: IfNotPresent
+
+configuration:
+  useRebootSentinelHostPath: true
+  concurrency: 1
+  drainTimeout: 30m
+  # Kured's flag is an integer number of seconds (not a Go duration).
+  skipWaitForDeleteTimeout: 300
+  startTime: "02:00"
+  endTime: "05:00"
+  timeZone: UTC
+  preferNoScheduleTaint: kured/reboot-in-progress
+  annotateNodes: true
+  logFormat: json
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+service:
+  create: true
+  port: 8080
+
+metrics:
+  create: false

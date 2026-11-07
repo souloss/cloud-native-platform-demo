@@ -1,0 +1,35 @@
+operator:
+  replicaCount: 2
+
+metricsServer:
+  replicaCount: 2
+
+webhooks:
+  replicaCount: 2
+
+resources:
+  operator:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  metricServer:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  webhooks:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+prometheus:
+  metricServer:
+    enabled: true

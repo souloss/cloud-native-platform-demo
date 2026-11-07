@@ -1,0 +1,990 @@
+{
+  "title": "K3s Observability Pipeline",
+  "description": "OpenTelemetry acceptance/export counters and OpenObserve signal quality.",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Default",
+      "panels": [
+        {
+          "id": "pipeline-1",
+          "type": "area",
+          "title": "Log records ingested",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "logs"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, count(*) AS records FROM \"default\" GROUP BY ts ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Records",
+                    "alias": "records",
+                    "column": "records",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 96,
+            "h": 9,
+            "i": 1
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-2",
+          "type": "area",
+          "title": "Spans ingested",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true,
+            "unit": "spans"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, count(*) AS spans FROM \"default\" GROUP BY ts ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Spans",
+                    "alias": "spans",
+                    "column": "spans",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 96,
+            "h": 9,
+            "i": 2
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-3",
+          "type": "area",
+          "title": "OTel accepted metrics",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, sum(value) AS points FROM \"otelcol_receiver_accepted_metric_points_total\" GROUP BY ts ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_receiver_accepted_metric_points_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Points",
+                    "alias": "points",
+                    "column": "points",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 9,
+            "w": 64,
+            "h": 9,
+            "i": 3
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-4",
+          "type": "area",
+          "title": "OTel accepted logs",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, sum(value) AS records FROM \"otelcol_receiver_accepted_log_records_total\" GROUP BY ts ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_receiver_accepted_log_records_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Records",
+                    "alias": "records",
+                    "column": "records",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 64,
+            "y": 9,
+            "w": 64,
+            "h": 9,
+            "i": 4
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-5",
+          "type": "area",
+          "title": "OTel accepted spans",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, sum(value) AS spans FROM \"otelcol_receiver_accepted_spans_total\" GROUP BY ts ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_receiver_accepted_spans_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Spans",
+                    "alias": "spans",
+                    "column": "spans",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 128,
+            "y": 9,
+            "w": 64,
+            "h": 9,
+            "i": 5
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-6",
+          "type": "area",
+          "title": "OTel exported metric points",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, exporter, sum(value) AS points FROM \"otelcol_exporter_sent_metric_points_total\" GROUP BY ts,exporter ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_exporter_sent_metric_points_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Points",
+                    "alias": "points",
+                    "column": "points",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Exporter",
+                    "alias": "exporter",
+                    "column": "exporter",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 18,
+            "w": 64,
+            "h": 9,
+            "i": 6
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-7",
+          "type": "area",
+          "title": "OTel exported logs",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, exporter, sum(value) AS records FROM \"otelcol_exporter_sent_log_records_total\" GROUP BY ts,exporter ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_exporter_sent_log_records_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Records",
+                    "alias": "records",
+                    "column": "records",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Exporter",
+                    "alias": "exporter",
+                    "column": "exporter",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 64,
+            "y": 18,
+            "w": 64,
+            "h": 9,
+            "i": 7
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-8",
+          "type": "area",
+          "title": "OTel exported spans",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, exporter, sum(value) AS spans FROM \"otelcol_exporter_sent_spans_total\" GROUP BY ts,exporter ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_exporter_sent_spans_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Spans",
+                    "alias": "spans",
+                    "column": "spans",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Exporter",
+                    "alias": "exporter",
+                    "column": "exporter",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 128,
+            "y": 18,
+            "w": 64,
+            "h": 9,
+            "i": 8
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-9",
+          "type": "metric",
+          "title": "Exporter queue size",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT avg(value) AS queue_batches FROM \"otelcol_exporter_queue_size\"",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_exporter_queue_size",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Batches",
+                    "alias": "queue_batches",
+                    "column": "queue_batches",
+                    "isDerived": false,
+                    "aggregationFunction": "avg"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 27,
+            "w": 48,
+            "h": 8,
+            "i": 9
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-10",
+          "type": "metric",
+          "title": "Failed metric exports",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT max(value) AS failed_points FROM \"otelcol_exporter_send_failed_metric_points_total\"",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "otelcol_exporter_send_failed_metric_points_total",
+                "stream_type": "metrics",
+                "x": [],
+                "y": [
+                  {
+                    "label": "Failed points",
+                    "alias": "failed_points",
+                    "column": "failed_points",
+                    "isDerived": false,
+                    "aggregationFunction": "max"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 27,
+            "w": 48,
+            "h": 8,
+            "i": 10
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-11",
+          "type": "table",
+          "title": "Logs by severity",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT severity, count(*) AS events FROM \"default\" GROUP BY severity ORDER BY events DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Severity",
+                    "alias": "severity",
+                    "column": "severity",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Events",
+                    "alias": "events",
+                    "column": "events",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 27,
+            "w": 48,
+            "h": 8,
+            "i": 11
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-12",
+          "type": "table",
+          "title": "Traces by service and status",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT service_name AS service, span_status, count(*) AS spans FROM \"default\" GROUP BY service,span_status ORDER BY spans DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Service",
+                    "alias": "service",
+                    "column": "service",
+                    "isDerived": false
+                  },
+                  {
+                    "label": "Status",
+                    "alias": "span_status",
+                    "column": "span_status",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Spans",
+                    "alias": "spans",
+                    "column": "spans",
+                    "isDerived": false,
+                    "aggregationFunction": "count"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 27,
+            "w": 48,
+            "h": 8,
+            "i": 12
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-13",
+          "type": "area",
+          "title": "Hubble lost events",
+          "description": "A non-zero value means Hubble event loss, which requires reviewing relay/agent capacity.",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS ts, source, sum(value) AS lost FROM \"hubble_lost_events_total\" GROUP BY ts,source ORDER BY ts",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "hubble_lost_events_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "ts",
+                    "column": "ts",
+                    "isDerived": false,
+                    "aggregationFunction": "histogram"
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Lost events",
+                    "alias": "lost",
+                    "column": "lost",
+                    "isDerived": false,
+                    "aggregationFunction": "sum",
+                    "color": "#c23531"
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Source",
+                    "alias": "source",
+                    "column": "source",
+                    "isDerived": false
+                  }
+                ],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 36,
+            "w": 96,
+            "h": 9,
+            "i": 13
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        },
+        {
+          "id": "pipeline-14",
+          "type": "table",
+          "title": "Hubble TCP flags",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": "right",
+            "line_interpolation": "linear",
+            "connect_nulls": true
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT family, sum(value) AS packets FROM \"hubble_tcp_flags_total\" GROUP BY family ORDER BY packets DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "hubble_tcp_flags_total",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Family",
+                    "alias": "family",
+                    "column": "family",
+                    "isDerived": false
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Packets",
+                    "alias": "packets",
+                    "column": "packets",
+                    "isDerived": false,
+                    "aggregationFunction": "sum"
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "type": "list",
+                  "values": [],
+                  "logicalOperator": "AND",
+                  "filterType": "list"
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "scatter",
+                "weight_fixed": 1,
+                "limit": 0,
+                "min": 0,
+                "max": 100,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 36,
+            "w": 96,
+            "h": 9,
+            "i": 14
+          },
+          "htmlContent": "",
+          "markdownContent": ""
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [],
+    "showDynamicFilters": true
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "15m"
+  }
+}

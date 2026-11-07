@@ -1,0 +1,66 @@
+# Kubernetes Events are a separate, HA collector because the receiver watches
+# the API and must use leader election to avoid duplicate records.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: otel-kubernetes-events-leader
+  namespace: observability
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: otel-kubernetes-events-leader
+  namespace: observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: otel-kubernetes-events-leader
+subjects:
+  - kind: ServiceAccount
+    name: otel-gateway
+    namespace: observability
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: kubernetes-events
+  namespace: observability
+spec:
+  mode: deployment
+  replicas: 2
+  serviceAccount: otel-gateway
+  image: otel/opentelemetry-collector-contrib:0.162.0
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 384Mi }
+  config:
+    extensions:
+      k8s_leader_elector:
+        auth_type: serviceAccount
+        lease_name: otel-kubernetes-events
+        lease_namespace: observability
+    receivers:
+      k8s_events:
+        auth_type: serviceAccount
+        k8s_leader_elector: k8s_leader_elector
+        dedup_interval: 5m
+    processors:
+      memory_limiter: { check_interval: 1s, limit_mib: 256, spike_limit_mib: 64 }
+      k8sattributes: {}
+      batch: { send_batch_size: 128, timeout: 2s }
+    exporters:
+      otlp/gateway:
+        endpoint: gateway-collector.observability.svc.cluster.local:4317
+        tls: { insecure: true }
+        retry_on_failure: { enabled: true, max_elapsed_time: 300s }
+    service:
+      extensions: [k8s_leader_elector]
+      pipelines:
+        logs:
+          receivers: [k8s_events]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlp/gateway]

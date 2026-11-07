@@ -1,0 +1,42 @@
+# Optional production CSI backend.
+# Install this file only when STORAGE_BACKEND=longhorn. The workload PVCs use
+# the separate `fast-rwo` StorageClass below instead of Longhorn's default
+# `longhorn` class, so changing the backend does not alter application YAML.
+defaultSettings:
+  defaultReplicaCount: 3
+  defaultDataPath: /var/lib/longhorn
+  storageMinimalAvailablePercentage: 15
+  storageOverProvisioningPercentage: 100
+  replicaSoftAntiAffinity: false
+  replicaAutoBalance: best-effort
+  autoSalvage: true
+  autoDeletePodWhenVolumeDetachedUnexpectedly: true
+  concurrentAutomaticEngineUpgradePerNodeLimit: 1
+
+persistence:
+  createStorageClass: false
+  defaultClass: false
+
+longhornUI:
+  replicas: 2
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+service:
+  ui:
+    type: ClusterIP
+
+ingress:
+  enabled: false
+
+preUpgradeChecker:
+  jobEnabled: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

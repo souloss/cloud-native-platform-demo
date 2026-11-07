@@ -4,24 +4,32 @@ operator:
   replicas: 1
 ipam:
   mode: kubernetes
-# 默认 k3d 配置仍启用 k3s kube-proxy。这是刻意的兼容性选择：k3s 负责服务 VIP 路径，
-# Cilium 在外围提供 CNI、策略引擎、Hubble 和 eBPF 数据路径。
-# Cilium 支持 kubeProxyReplacement=true，但需要全新的无 kube-proxy 集群以及额外的
-# 主机/API 可达性配置；它不是本 k3d 教学配置经过验证的默认值。
-kubeProxyReplacement: false
-# scripts/up.sh 会根据当前 k3d server 地址设置这些值，因此即使 Docker 分配了不同的
-# bridge 子网，该 values 文件也可以工作。
+# Gateway API requires kube-proxy replacement. scripts/up.sh creates k3d
+# nodes with kube-proxy disabled and injects the server address below.
+kubeProxyReplacement: true
+# scripts/up.sh sets these values from the current k3d server address, so the
+# values file remains valid when Docker allocates a different bridge subnet.
 routingMode: tunnel
 tunnelProtocol: vxlan
 l7Proxy: true
 gatewayAPI:
-  enabled: false
+  # Cilium is the single Gateway API controller for this blueprint.
+  enabled: true
+  enableAppProtocol: true
 hubble:
   enabled: true
   relay:
     enabled: false
   ui:
     enabled: false
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - httpV2
 prometheus:
   enabled: true
 operatorPrometheus:

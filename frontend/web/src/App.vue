@@ -118,7 +118,7 @@ async function deleteCurrentOrder() {
 }
 
 function toggleReplay() {
-  if (!recorderReady.value) return notify('HyperDX is not connected for this session.', 'error')
+  if (!recorderReady.value) return notify('OpenObserve RUM is not connected for this session.', 'error')
   if (replaying.value) {
     telemetry.stopReplay()
     replaying.value = false
@@ -135,7 +135,7 @@ function toggleReplay() {
 }
 
 function recordDemoAction() {
-  if (!recorderReady.value) return notify('HyperDX is not connected for this session.', 'error')
+  if (!recorderReady.value) return notify('OpenObserve RUM is not connected for this session.', 'error')
   const recordedAt = new Date()
   track('ui.demo.action', { 'ui.action.source': 'vue-crud-button', 'ui.action.recorded_at': recordedAt.toISOString() })
   lastAction.value = `Demo action recorded at ${recordedAt.toLocaleTimeString()}`
@@ -167,7 +167,7 @@ onMounted(async () => {
   <main>
     <header class="hero">
       <div>
-        <span class="eyebrow">K3S / GATEWAY API / HYPERDX V2</span>
+        <span class="eyebrow">K3S / GATEWAY API / OPENOBSERVE</span>
         <h1>Order desk</h1>
         <p class="lede">A small observable workflow backed by GoFr, PostgreSQL, MySQL and Redis.</p>
       </div>

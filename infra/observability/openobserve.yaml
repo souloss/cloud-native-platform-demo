@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openobserve
+  namespace: gofr-demo
+  labels:
+    app: openobserve
+    app.kubernetes.io/name: openobserve
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: cloud-native-platform-demo
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: openobserve
+  template:
+    metadata:
+      labels:
+        app: openobserve
+        app.kubernetes.io/name: openobserve
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/part-of: cloud-native-platform-demo
+    spec:
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 3000
+        fsGroup: 2000
+        runAsNonRoot: true
+      containers:
+        - name: openobserve
+          image: o2cr.ai/openobserve/openobserve:v1.1.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ZO_ROOT_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: openobserve-local
+                  key: root-user-email
+            - name: ZO_ROOT_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openobserve-local
+                  key: root-user-password
+            - { name: ZO_LOCAL_MODE, value: "true" }
+            - { name: ZO_LOCAL_MODE_STORAGE, value: disk }
+            - { name: ZO_DATA_DIR, value: /data }
+            - { name: ZO_HTTP_PORT, value: "5080" }
+            - { name: ZO_GRPC_PORT, value: "5081" }
+            - { name: ZO_TELEMETRY, value: "false" }
+          ports:
+            - { name: http, containerPort: 5080 }
+            - { name: grpc, containerPort: 5081 }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openobserve
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openobserve
+  namespace: gofr-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openobserve
+  namespace: gofr-demo
+  labels:
+    app: openobserve
+    app.kubernetes.io/name: openobserve
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: cloud-native-platform-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: openobserve
+  ports:
+    - { name: http, port: 5080, targetPort: http }
+    - { name: grpc, port: 5081, targetPort: grpc }

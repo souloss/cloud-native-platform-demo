@@ -1,0 +1,24 @@
+# K3s server configuration template for the second and third control-plane nodes.
+# The token must be supplied out of band (for example, a root-owned file with 0600).
+write-kubeconfig-mode: "0640"
+server: https://k3s-api.example.internal:6443
+token: REPLACE_WITH_K3S_SERVER_TOKEN
+secrets-encryption: true
+etcd-expose-metrics: true
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
+flannel-backend: none
+disable-network-policy: true
+disable-kube-proxy: true
+disable:
+  - traefik
+  - servicelb
+
+# Keep these arguments identical to server-init.yaml when Kubernetes audit
+# logging is enabled. The policy file must exist on every server.
+# kube-apiserver-arg:
+#   - audit-policy-file=/etc/rancher/k3s/audit-policy.yaml
+#   - audit-log-path=/var/log/kubernetes/audit/audit.log
+#   - audit-log-maxage=30
+#   - audit-log-maxbackup=10
+#   - audit-log-maxsize=100

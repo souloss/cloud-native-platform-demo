@@ -1,5 +1,3 @@
-import HyperDX from '@hyperdx/browser'
-
 const serviceName = 'k3s-gofr-web'
 
 class NoopTelemetryProvider {
@@ -10,8 +8,9 @@ class NoopTelemetryProvider {
   stopReplay() {}
 }
 
-class HyperDXTelemetryProvider {
-  constructor() {
+class OpenObserveTelemetryProvider {
+  constructor(rum) {
+    this.rum = rum
     this.ready = true
   }
 
@@ -19,52 +18,49 @@ class HyperDXTelemetryProvider {
 
   trackEvent(name, attributes = {}) {
     const sessionId = this.getSessionId()
-    HyperDX.addAction?.(name, sessionId ? { 'ui.session.id': sessionId, ...attributes } : attributes)
+    this.rum.addAction?.(name, sessionId ? { 'ui.session.id': sessionId, ...attributes } : attributes)
   }
 
   getSessionId() {
-    return HyperDX.getSessionId?.() || ''
+    return this.rum.getInternalContext?.()?.sessionId || ''
   }
 
   startReplay() {
-    HyperDX.resumeSessionRecorder?.()
+    this.rum.startSessionReplayRecording?.({ force: true })
   }
 
   stopReplay() {
-    HyperDX.stopSessionRecorder?.()
+    this.rum.stopSessionReplayRecording?.()
   }
 }
 
 let provider = new NoopTelemetryProvider()
 
-function trimTrailingSlash(value) {
-  return value.replace(/\/+$/, '')
-}
+export async function configureTelemetry({ apiKey, endpoint }) {
+  if (import.meta.env.VITE_OBSERVABILITY_BACKEND !== 'openobserve' || !apiKey) return
 
-export function configureTelemetry({ apiKey, endpoint }) {
-  if (!apiKey) return
+  const applicationId = import.meta.env.VITE_OO_RUM_APPLICATION_ID
+  const site = import.meta.env.VITE_OO_RUM_SITE || endpoint
+  if (!applicationId || !site) return
 
-  const baseURL = trimTrailingSlash(endpoint)
-  HyperDX.init({
-    apiKey,
+  const { openobserveRum } = await import('@openobserve/browser-rum')
+  openobserveRum.init({
+    applicationId,
+    clientToken: apiKey,
+    site,
     service: serviceName,
-    tracePropagationTargets: [/\/api\//],
-    consoleCapture: true,
-    advancedNetworkCapture: true,
-    url: baseURL,
-    tracesUrl: `${baseURL}/v1/traces`,
-    logsUrl: `${baseURL}/v1/logs`,
-    disableReplay: false,
-    maskAllInputs: true,
-    blockSelector: '[data-private]',
-    otelResourceAttributes: {
-      'service.version': '0.1.0',
-      'deployment.environment': import.meta.env.MODE,
-    },
+    env: import.meta.env.MODE,
+    version: import.meta.env.VITE_APP_VERSION || 'dev',
+    sessionSampleRate: Number(import.meta.env.VITE_OO_RUM_SESSION_SAMPLE_RATE || 20),
+    sessionReplaySampleRate: Number(import.meta.env.VITE_OO_RUM_REPLAY_SAMPLE_RATE || 5),
+    trackResources: true,
+    trackLongTasks: true,
+    trackUserInteractions: true,
+    defaultPrivacyLevel: 'mask-user-input',
+    allowedTracingUrls: [/\/api\//],
+    startSessionReplayRecordingManually: true,
   })
-  provider = new HyperDXTelemetryProvider()
-  // 虽然回放默认开启，但在演示中显式启动录制器，让行为更加清晰。
-  provider.startReplay()
+  provider = new OpenObserveTelemetryProvider(openobserveRum)
 }
 
 export const telemetry = {

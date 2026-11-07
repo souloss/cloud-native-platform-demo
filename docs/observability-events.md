@@ -1,7 +1,7 @@
 # 可观测性事件规范
 
 本文档定义前端业务事件的稳定名称、属性和数据治理边界。业务组件只调用项目提供的
-`telemetry.trackEvent(name, attributes)`，不直接依赖 HyperDX SDK。当前适配器使用
+`telemetry.trackEvent(name, attributes)`，不直接依赖 OpenObserve SDK。当前适配器使用
 OpenTelemetry custom-action span 承载事件；未来可以替换为原生 OpenTelemetry、其他
 后端或空实现，而不修改业务组件。
 
@@ -44,17 +44,20 @@ Session ID、URL 参数和原始错误消息禁止进入指标标签。
 - 本地演示默认以 100% 采样，便于验收和教学；生产环境应根据 SLO、成本和数据敏感度配置采样。
 - 业务事件与链路遵循同一 Trace Context，采样决策由入口和 Collector 统一管理。
 - 会话回放默认只用于本地演示。生产环境应单独评估用户授权、遮罩策略、跨境和保留期限。
-- 具体后端的保留时间由部署方配置；业务代码不得假设 HyperDX、SigNoz 或 Grafana 的默认保留期。
+- 具体后端的保留时间由部署方配置；业务代码不得假设 OpenObserve 或 SigNoz
+  或 Grafana 的默认保留期。
 
 ## 厂商适配边界
 
 `frontend/web/src/telemetry.js` 是当前唯一的浏览器遥测适配边界：
 
-- `HyperDXTelemetryProvider` 负责 HyperDX Browser SDK 和 Session Replay；
+- 当前本地演示的 `OpenObserveTelemetryProvider` 负责演示用 Browser SDK 和 Session Replay；
 - `NoopTelemetryProvider` 在没有 ingestion key 时保证页面仍可用；
-- 后续可以增加 `OpenTelemetryTelemetryProvider` 或其他后端 Provider；
+- 生产版应使用 OpenObserve RUM SDK（独立的 applicationId/clientToken）或增加
+  `OpenTelemetryTelemetryProvider`，不要把后端 Basic Auth 暴露给浏览器；
 - `App.vue` 只能使用 `telemetry` 门面，不得导入厂商 SDK 或调用 `addAction`。
 
-浏览器 ingestion key 是只能访问项目 Collector 的受限密钥，不是后端导出到观测后端的密钥。
-Collector 在出口侧使用独立的 `HYPERDX_API_KEY` 或其他 OTLP 后端凭据，并在入口侧完成认证、
-CORS、限流、脱敏和批处理。
+本地演示的浏览器 ingestion key 只能访问项目 Collector，不是后端导出到观测后端的密钥。
+生产 OpenObserve RUM 使用独立的 application/client token；Collector 在出口侧使用
+独立的 OpenObserve OTLP Basic Auth 或其他后端凭据，并在入口侧完成认证、CORS、限流、
+脱敏和批处理。

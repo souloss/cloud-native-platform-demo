@@ -81,7 +81,7 @@ spec:
       serviceAccountName: kite
       containers:
         - name: kite
-          image: ghcr.io/kite-org/kite:latest
+          image: ghcr.io/kite-org/kite:v0.16.0
           imagePullPolicy: IfNotPresent
           command: ["/app/kite"]
           ports:
