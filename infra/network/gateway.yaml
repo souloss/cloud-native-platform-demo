@@ -1,9 +1,27 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: cilium
+  name: envoy-gateway
 spec:
-  controllerName: io.cilium/gateway-controller
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: local-proxy-config
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: local-proxy-config
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort
+        externalTrafficPolicy: Cluster
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -12,7 +30,7 @@ metadata:
   namespace: gofr-demo
   labels: { app.kubernetes.io/name: public-gateway, app.kubernetes.io/component: edge, app.kubernetes.io/part-of: cloud-native-platform-demo }
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: envoy-gateway
   listeners:
     - name: http
       protocol: HTTP

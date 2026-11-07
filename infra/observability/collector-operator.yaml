@@ -133,6 +133,13 @@ spec:
               scrape_interval: 30s
               static_configs:
                 - targets: [hubble-metrics.kube-system.svc.cluster.local:9965]
+      prometheus/envoy-gateway:
+        config:
+          scrape_configs:
+            - job_name: envoy-gateway
+              scrape_interval: 30s
+              static_configs:
+                - targets: [envoy-gateway.envoy-gateway-system.svc.cluster.local:19001]
       k8s_cluster:
         auth_type: serviceAccount
         collection_interval: 30s
@@ -162,7 +169,7 @@ spec:
           processors: [memory_limiter, k8sattributes, attributes/redact, batch]
           exporters: [otlphttp/openobserve]
         metrics:
-          receivers: [otlp, prometheus/apps, prometheus/keda, prometheus/otel, prometheus/hubble, k8s_cluster]
+          receivers: [otlp, prometheus/apps, prometheus/keda, prometheus/otel, prometheus/hubble, prometheus/envoy-gateway, k8s_cluster]
           processors: [memory_limiter, k8sattributes, attributes/redact, batch]
           exporters: [otlphttp/openobserve]
         logs:

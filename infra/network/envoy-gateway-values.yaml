@@ -1,0 +1,22 @@
+# Envoy Gateway controller for the local k3d preview.
+# The managed data-plane Service is configured by EnvoyProxy in gateway.yaml.
+deployment:
+  replicas: 1
+  envoyGateway:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+service:
+  type: ClusterIP
+
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    provider:
+      type: Kubernetes

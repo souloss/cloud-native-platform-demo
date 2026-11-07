@@ -12,20 +12,15 @@ routingMode: native
 ipv4NativeRoutingCIDR: 10.42.0.0/16 # must not overlap the cloud VPC
 autoDirectNodeRoutes: true
 enableIPv4Masquerade: true
-l7Proxy: true
+l7Proxy: false
 operator:
   replicas: 2
 
 gatewayAPI:
-  enabled: true
-  enableAppProtocol: true
-  enableAlpn: true
-  externalTrafficPolicy: Local
-  gatewayClass:
-    create: false # the Git-managed GatewayClass is applied after the CRDs
+  enabled: false
 
 envoy:
-  enabled: true
+  enabled: false
 
 hubble:
   enabled: true
@@ -40,8 +35,9 @@ hubble:
       - tcp
       - flow
       - icmp
-      - httpV2
 
+# Expose Prometheus-format endpoints for OTel Collector; this does not deploy
+# a Prometheus Server.
 prometheus:
   enabled: true
 operatorPrometheus:

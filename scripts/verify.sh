@@ -17,10 +17,8 @@ NAMESPACE=gofr-demo
 RUNTIME_DIR="${RUNTIME_DIR:-.runtime}"
 APP_PORT="${APP_PORT:-8080}"
 OPENOBSERVE_PORT="${OPENOBSERVE_PORT:-18081}"
-PROMETHEUS_PORT="${PROMETHEUS_PORT:-19090}"
 APP_URL="http://127.0.0.1:${APP_PORT}"
 OPENOBSERVE_URL="http://localhost:${OPENOBSERVE_PORT}"
-PROMETHEUS_URL="http://127.0.0.1:${PROMETHEUS_PORT}"
 OPENOBSERVE_EMAIL="${OPENOBSERVE_EMAIL:-demo@cloud-native.local}"
 OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD:-CloudNative#2026}"
 BROWSER_INGESTION_KEY="${VITE_OTEL_INGESTION_KEY:-$(cat "${RUNTIME_DIR}/browser-ingestion-key" 2>/dev/null || printf '%s' k3s-gofr-browser-ingestion)}"
@@ -62,14 +60,14 @@ forward_gateway() {
   echo "Gateway NodePort 转发未就绪：${url}" >&2; return 1
 }
 
-gateway_service="$("${K[@]}" -n "${NAMESPACE}" get service -l gateway.networking.k8s.io/gateway-name=public -o jsonpath='{range .items[0]}{.metadata.name}{end}')"
-[[ -n "${gateway_service}" ]] || { echo 'Cilium Gateway Service 不存在' >&2; exit 1; }
-forward_gateway "${APP_URL}/" "${NAMESPACE}" "${gateway_service}" "${APP_PORT}:80" /tmp/preview-gateway-verify.log
-forward "${PROMETHEUS_URL}/-/ready" "${NAMESPACE}" prometheus "${PROMETHEUS_PORT}:9090" /tmp/preview-prometheus-verify.log
+read -r gateway_namespace gateway_service < <("${K[@]}" get service -A -l gateway.envoyproxy.io/owning-gateway-name=public,gateway.envoyproxy.io/owning-gateway-namespace=gofr-demo -o jsonpath='{range .items[0]}{.metadata.namespace} {.metadata.name}{end}')
+[[ -n "${gateway_service}" ]] || { echo 'Envoy Gateway Service 不存在' >&2; exit 1; }
+forward_gateway "${APP_URL}/" "${gateway_namespace}" "${gateway_service}" "${APP_PORT}:80" /tmp/preview-gateway-verify.log
 forward "${OPENOBSERVE_URL}/healthz" "${NAMESPACE}" openobserve "${OPENOBSERVE_PORT}:5080" /tmp/preview-openobserve-verify.log
 
 echo '== 控制器与资源 =='
 "${K[@]}" get nodes
+"${K[@]}" -n envoy-gateway-system get deploy envoy-gateway
 "${K[@]}" -n cert-manager get deploy
 "${K[@]}" -n kured get daemonset kured
 "${K[@]}" -n cattle-system get deploy system-upgrade-controller

@@ -1,9 +1,27 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: cilium
+  name: envoy-gateway
 spec:
-  controllerName: io.cilium/gateway-controller
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: production-proxy-config
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: production-proxy-config
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: LoadBalancer
+        externalTrafficPolicy: Local
 ---
 apiVersion: v1
 kind: Namespace
@@ -20,10 +38,10 @@ metadata:
   name: public
   namespace: gateway-system
   annotations:
-    # Cilium creates a cloud LoadBalancer Service for this Gateway.
-    # For a bare-metal/VPC install, use Cilium LB-IPAM or BGP instead.
+    # Envoy Gateway creates the LoadBalancer Service for this Gateway.
+    # For a bare-metal/VPC install, use the cloud LB or a compatible Service LB.
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: envoy-gateway
   listeners:
     - name: https
       protocol: HTTPS

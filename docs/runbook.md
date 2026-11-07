@@ -29,7 +29,7 @@ make demo-down     # 停止端口转发并删除 gofr-demo k3d 集群
 ```bash
 RUNTIME_DIR=.runtime-preview K3D_CLUSTER_NAME=cloud-native-preview \
 APP_PORT=28080 KITE_PORT=28082 OPENOBSERVE_PORT=28083 \
-PROMETHEUS_PORT=29091 COLLECTOR_HTTP_PORT=24318 \
+COLLECTOR_HTTP_PORT=24318 \
 PORT_FORWARD_ADDRESS=127.0.0.1 make up
 ```
 
@@ -40,9 +40,8 @@ PORT_FORWARD_ADDRESS=127.0.0.1 make up
 
 | 入口 | 本地地址 |
 | --- | --- |
-| 应用 Gateway | <http://127.0.0.1:8080>（Cilium Gateway） |
+| 应用 Gateway | <http://127.0.0.1:8080>（Envoy Gateway） |
 | Kite | <http://127.0.0.1:18080> |
-| Prometheus | <http://127.0.0.1:19090> |
 | OpenObserve UI/API | <http://localhost:18081> |
 | Collector OTLP HTTP（调试） | <http://127.0.0.1:14318> |
 
@@ -63,18 +62,19 @@ Autoscaling` 和 `K3s Observability Pipeline`。生产默认是 core profile，�
 
 `make verify` 会检查以下契约：
 
-1. Kubernetes 指标、Cilium 健康状态和 Gateway API 条件。
-2. Cilium Envoy 数据面、应用/数据/可观测性工作负载和 HPA/KEDA。
-3. Kite 与 Prometheus 的可用性。
+1. Kubernetes 指标、Cilium CNI 健康状态和 Gateway API 条件。
+2. Envoy Gateway 数据面、应用/数据/可观测性工作负载和 HPA/KEDA。
+3. Kite 与 OpenObserve 的可用性。
 4. 通过 Gateway 完成 Web 交付以及 catalog/order CRUD。
-5. GoFr Prometheus 指标和 Collector 汇聚的 OpenTelemetry 信号。
-6. 浏览器 OTLP 的 CORS、未授权拒绝、受限密钥认证和 Prometheus recording rule。
+5. GoFr Prometheus 格式指标和 Collector 汇聚的 OpenTelemetry 信号。
+6. 浏览器 OTLP 的 CORS、未授权拒绝、受限密钥认证和 OpenObserve PromQL 查询。
 
-`make verify` 完成后可以使用以下 PromQL：
+`make verify` 完成后可在 OpenObserve 的 PromQL API 中查询指标；项目不部署独立
+Prometheus Server：
 
 ```promql
-gofr:http_responses:rate5m
-gofr:http_response_duration_seconds:p95
+sum(rate(app_http_response_count[5m]))
+sum(rate(app_http_response_sum[5m]))
 sum by (operation, result) (rate(catalog_cache_operations_total[5m]))
 ```
 

@@ -12,12 +12,12 @@ Cloud Native Platform Demo 是一个刻意保持小而完整、同时按生产�
 
 | 层级 | 职责 | 仓库位置 |
 | --- | --- | --- |
-| 边缘入口 | Gateway API 契约、Cilium Envoy 数据面、路径路由 | `infra/network` |
-| 运行时 | k3s、Cilium CNI、网络策略和 Hubble 流量可见性 | `infra/k3s`、`infra/network` |
+| 边缘入口 | Envoy Gateway、Gateway API 契约和路径路由 | `infra/network` |
+| 运行时 | k3s、Cilium CNI、eBPF 服务数据面、网络策略和 Hubble 流量可见性 | `infra/k3s`、`infra/network` |
 | 业务工作负载（本地示例） | GoFr `orders`、`catalog` API 以及 Vue Web 客户端 | `services`、`frontend/web`、`infra/apps` |
 | 数据层（本地示例） | PostgreSQL、MySQL 和 Redis 支撑服务 | `infra/data` |
-| 可观测性（本地示例） | OTel Operator、OpenObserve（Prometheus receiver；Prometheus Server 仅兼容演示） | `infra/observability/collector-operator.yaml`、`infra/observability/dashboards/` |
-| 生产平台 | K3s、Cilium、Gateway API、KEDA、cert-manager、Kured、SUC、OTel 和 OpenObserve | `infra/production`、`scripts/production` |
+| 可观测性（本地示例） | OTel Operator、OpenObserve 和 Prometheus receiver | `infra/observability/collector-operator.yaml`、`infra/observability/dashboards/` |
+| 生产平台 | K3s、Cilium CNI、Envoy Gateway、Gateway API、KEDA、cert-manager、Kured、SUC、OTel 和 OpenObserve | `infra/production`、`scripts/production` |
 | 可观测性（生产） | OTel Operator、Cilium/Hubble 和 OpenObserve | `infra/production/observability` |
 | 运维层 | Kite 控制台、可重复的生命周期操作和验收检查 | `infra/dashboard`、`scripts`、`Makefile` |
 
@@ -28,13 +28,13 @@ Cloud Native Platform Demo 是一个刻意保持小而完整、同时按生产�
 
 ```text
 浏览器（Vue + 会话回放）
-  -> Cilium Gateway / Gateway API
+  -> Envoy Gateway / Gateway API
     -> web（静态界面）
     -> orders -> PostgreSQL
               -> catalog -> MySQL
                         -> Redis 缓存
 
-浏览器 OTLP/HTTP -> Cilium Gateway -> OpenTelemetry Collector -> OpenObserve
+浏览器 OTLP/HTTP -> Envoy Gateway -> OpenTelemetry Collector -> OpenObserve
 GoFr OTLP/gRPC -> OpenTelemetry Collector -> OTLP 后端
 节点 hostmetrics/组件 Prometheus endpoint -> OTel Collector -> OpenObserve
 Pod 网络流量 -> Cilium/Hubble
@@ -48,18 +48,18 @@ Prometheus 指标；应用处理器额外记录业务 span 以及缓存命中/�
 
 ## 生产形态设计
 
-- Gateway API 是公开契约；Cilium 为 Gateway 管理数据面 Service。云上通过
-  LB-IPAM/BGP 或云 LoadBalancer 暴露，本地 k3d 用 NodePort 映射到回环端口。
+- Gateway API 是公开契约；Envoy Gateway 管理 Envoy 数据面 Service。云上通过
+  LoadBalancer Service 暴露，本地 k3d 使用 NodePort 并由 port-forward 映射到回环端口。
 - 工作负载配置多副本、资源请求/限制、就绪和存活探针、PodDisruptionBudget 以及基于
   CPU 的 HPA。
 - 无状态工作负载使用滚动更新和按主机名拓扑分布；探针区分启动、就绪和存活，避免
   依赖较慢的进程尚未准备好就接收流量。
-- 本地 Prometheus Server 只保留作 PromQL 和 recording rule 的兼容演示；生产指标、日志和
-  链路写入 OpenObserve，HPA 只依赖 K3s 内置 metrics-server。OpenObserve 的 PromQL API
-  供 KEDA 查询，避免把 Prometheus Server 作为生产前置依赖。
+- 项目不部署独立 Prometheus Server。Prometheus 格式指标由 OTel Collector 采集并写入
+  OpenObserve；HPA 只依赖 K3s 内置 metrics-server，KEDA 查询 OpenObserve 的 PromQL API。
 - 应用密钥通过 Kubernetes Secret 注入。仓库中的值只用于本地教学环境。
 - Cilium 替换 k3s 默认网络组件；本地 k3d 创建时关闭 kube-proxy，并在 Cilium 中启用
-  kube-proxy replacement，以便 Gateway API 使用统一的 eBPF 服务数据面。
+  kube-proxy replacement 为 Envoy Gateway 的 Service 提供 eBPF 服务数据面。Cilium 不再
+  管理 Gateway API 或 Envoy 代理。
 - 本地演示的浏览器遥测通过 Gateway 进入 Collector，Collector 负责入口密钥校验、CORS、
   限流、脱敏和批处理；生产版浏览器 RUM 使用 OpenObserve 的独立 client token，后端
   OTLP 仍只由 Collector 使用独立凭据导出。

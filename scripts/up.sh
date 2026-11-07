@@ -11,6 +11,7 @@ KURED_VERSION="${KURED_VERSION:-6.1.0}"
 SYSTEM_UPGRADE_CONTROLLER_VERSION="${SYSTEM_UPGRADE_CONTROLLER_VERSION:-110.0.0}"
 KEDA_VERSION="${KEDA_VERSION:-2.21.0}"
 OTEL_OPERATOR_VERSION="${OTEL_OPERATOR_VERSION:-0.129.0}"
+ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.6.1}"
 NAMESPACE=gofr-demo
 CLUSTER_NAME="${K3D_CLUSTER_NAME:-gofr-demo}"
 OPENOBSERVE_EMAIL="${OPENOBSERVE_EMAIL:-demo@cloud-native.local}"
@@ -18,7 +19,6 @@ OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD:-CloudNative#2026}"
 APP_PORT="${APP_PORT:-8080}"
 KITE_PORT="${KITE_PORT:-18080}"
 OPENOBSERVE_PORT="${OPENOBSERVE_PORT:-18081}"
-PROMETHEUS_PORT="${PROMETHEUS_PORT:-19090}"
 COLLECTOR_HTTP_PORT="${COLLECTOR_HTTP_PORT:-14318}"
 OBSERVABILITY_DASHBOARDS_PROFILE="${OBSERVABILITY_DASHBOARDS_PROFILE:-demo}"
 PORT_FORWARD_ADDRESS="${PORT_FORWARD_ADDRESS:-0.0.0.0}"
@@ -160,10 +160,9 @@ if [[ "${MODE:-k3d}" == "k3d" ]]; then
     rancher/mirrored-library-busybox:1.38.0 \
     quay.io/cilium/cilium:v${CILIUM_VERSION} \
     quay.io/cilium/operator-generic:v${CILIUM_VERSION} \
-    quay.io/cilium/cilium-envoy:v1.39.5-1792733054-8c73b2816bc8239e27f1fd53b271884688137459 \
+    docker.io/envoyproxy/gateway:${ENVOY_GATEWAY_VERSION} \
     ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:0.162.0 \
     ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.162.0 \
-    prom/prometheus:v3.16.0 \
     otel/opentelemetry-collector-contrib:0.162.0 \
     postgres:18.6-alpine3.24 \
     mysql:8.4.13 \
@@ -246,6 +245,12 @@ helm upgrade --install keda kedacore/keda --version "${KEDA_VERSION}" \
 "${KUBECTL[@]}" -n keda rollout status deployment/keda-admission-webhooks --timeout=300s
 
 "${KUBECTL[@]}" apply --server-side --force-conflicts -f "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml"
+helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+  --version "${ENVOY_GATEWAY_VERSION}" \
+  --namespace envoy-gateway-system --create-namespace \
+  -f infra/network/envoy-gateway-values.yaml
+[[ "${MODE:-k3d}" == "k3d" ]] && import_namespace_images envoy-gateway-system || true
+"${KUBECTL[@]}" -n envoy-gateway-system rollout status deployment/envoy-gateway --timeout=300s
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null 2>&1 || true
 helm repo update open-telemetry >/dev/null
 helm upgrade --install opentelemetry-operator open-telemetry/opentelemetry-operator \
@@ -265,7 +270,6 @@ chmod 600 "${RUNTIME_DIR}/browser-ingestion-key"
   --from-literal=browser-api-key="${BROWSER_API_KEY}" \
   --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" apply -f infra/observability/openobserve.yaml -f infra/observability/config.yaml -f infra/observability/collector-operator.yaml
-"${KUBECTL[@]}" apply -f infra/observability/prometheus-rules.yaml -f infra/observability/prometheus.yaml
 "${KUBECTL[@]}" apply -f infra/data/postgres.yaml -f infra/data/mysql-redis.yaml
 "${KUBECTL[@]}" apply -f infra/apps/services.yaml -f infra/apps/autoscaling.yaml
 "${KUBECTL[@]}" -n "${NAMESPACE}" delete hpa orders --ignore-not-found
@@ -274,9 +278,10 @@ chmod 600 "${RUNTIME_DIR}/browser-ingestion-key"
   --from-literal=password="${OPENOBSERVE_PASSWORD}" \
   --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" apply -f infra/observability/keda-openobserve.yaml
-if [[ "${MODE:-k3d}" == "k3d" ]]; then
-  "${KUBECTL[@]}" apply -f infra/network/cilium-lbipam-preview.yaml
-fi
+# Remove the old Cilium GatewayClass when updating an existing demo cluster.
+"${KUBECTL[@]}" delete gatewayclass cilium --ignore-not-found
+"${KUBECTL[@]}" -n kube-system delete service cilium-envoy-preview --ignore-not-found
+"${KUBECTL[@]}" delete ciliumloadbalancerippool preview --ignore-not-found
 "${KUBECTL[@]}" apply -f infra/network/gateway.yaml
 
 if command -v helm >/dev/null; then
@@ -312,20 +317,15 @@ fi
 
 # 演示使用可变的本地 :dev 标签；重启应用 Pod，确保每次执行都加载刚构建的二进制和前端 bundle。
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/catalog deploy/orders deploy/web
-# Prometheus 从挂载的 ConfigMap 读取配置和 recording rule。应用这些 ConfigMap 后重启，
-# 确保重复执行 `make up` 时配置和镜像都能生效。
-"${KUBECTL[@]}" -n "${NAMESPACE}" rollout restart deploy/prometheus
 
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/catalog --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/orders --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/web --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/openobserve --timeout=360s
-"${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/prometheus --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/postgres --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/mysql --timeout=240s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/redis --timeout=180s
 "${KUBECTL[@]}" -n kube-system rollout status deploy/kite --timeout=180s
-"${KUBECTL[@]}" -n gofr-demo wait gateway/public --for=condition=Programmed --timeout=180s
 
 import_pod_images() {
   local namespace="$1"
@@ -336,13 +336,15 @@ import_pod_images() {
 }
 if [[ "${MODE:-k3d}" == "k3d" ]]; then
   import_pod_images gofr-demo
+  import_pod_images envoy-gateway-system
 fi
+"${KUBECTL[@]}" -n gofr-demo wait gateway/public --for=condition=Programmed --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status deploy/gateway-collector --timeout=180s
 "${KUBECTL[@]}" -n "${NAMESPACE}" rollout status daemonset/agent-collector --timeout=180s
 
 GATEWAY_NAMESPACE=''
 GATEWAY_SERVICE=''
-until read -r GATEWAY_NAMESPACE GATEWAY_SERVICE < <("${KUBECTL[@]}" get service -A -l gateway.networking.k8s.io/gateway-name=public -o jsonpath='{range .items[0]}{.metadata.namespace} {.metadata.name}{end}' 2>/dev/null); [[ -n "${GATEWAY_SERVICE}" ]]; do
+until read -r GATEWAY_NAMESPACE GATEWAY_SERVICE < <("${KUBECTL[@]}" get service -A -l gateway.envoyproxy.io/owning-gateway-name=public,gateway.envoyproxy.io/owning-gateway-namespace=gofr-demo -o jsonpath='{range .items[0]}{.metadata.namespace} {.metadata.name}{end}' 2>/dev/null); [[ -n "${GATEWAY_SERVICE}" ]]; do
   sleep 2
 done
 "${KUBECTL[@]}" -n gofr-demo wait gateway/public --for=condition=Programmed --timeout=180s
@@ -352,7 +354,7 @@ start_forward() {
   local url="$1" namespace="$2" service="$3" mapping_string="$4" pid_file="$5" log_file="$6"
   read -r -a mappings <<< "${mapping_string}"
   # 上一次 Shell 可能留下仍在工作的端口转发和过期 PID 文件。只有 PID 文件
-  # 明确指向本脚本创建的进程时才复用，避免把宿主机上另一个 Prometheus/UI
+  # 明确指向本脚本创建的进程时才复用，避免把宿主机上的其他 UI
   # 误当成当前集群的端点。
   if [[ -f "${pid_file}" ]]; then
     local previous_pid
@@ -410,9 +412,8 @@ start_gateway_forward() {
     return
   fi
 
-  # Cilium Gateway Services intentionally have no selector: Cilium programs
-  # the dataplane directly. Port-forward cannot attach to such a Service, so
-  # the k3d preview bridges its NodePort to the documented localhost port.
+  # Envoy Gateway normally creates a selector-backed Service. Keep a NodePort
+  # bridge fallback for controllers that expose an unselected Service.
   node_port="$("${KUBECTL[@]}" -n "${namespace}" get service "${service}" -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}' 2>/dev/null || true)"
   node_ip="${SERVER_IP:-$("${KUBECTL[@]}" get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}') }"
   [[ -n "${node_port}" && -n "${node_ip}" ]] || { echo "无法为无 selector 的 Gateway Service 找到 NodePort：${namespace}/${service}" >&2; return 1; }
@@ -449,10 +450,8 @@ start_gateway_forward() {
 
 start_gateway_forward "http://127.0.0.1:${APP_PORT}/" "${GATEWAY_NAMESPACE}" "${GATEWAY_SERVICE}" "${APP_PORT}:80" "${RUNTIME_DIR}/port-forward.pid" "${RUNTIME_DIR}/port-forward.log"
 start_forward "http://127.0.0.1:${KITE_PORT}/" kube-system kite "${KITE_PORT}:8080" "${RUNTIME_DIR}/kite-port-forward.pid" "${RUNTIME_DIR}/kite-port-forward.log"
-start_forward "http://127.0.0.1:${PROMETHEUS_PORT}/-/ready" "${NAMESPACE}" prometheus "${PROMETHEUS_PORT}:9090" "${RUNTIME_DIR}/prometheus-port-forward.pid" "${RUNTIME_DIR}/prometheus-port-forward.log"
 echo "业务入口已就绪：http://127.0.0.1:${APP_PORT}/"
 echo "Kite：http://127.0.0.1:${KITE_PORT}/"
-echo "Prometheus：http://127.0.0.1:${PROMETHEUS_PORT}/"
 start_forward "http://localhost:${OPENOBSERVE_PORT}/healthz" "${NAMESPACE}" openobserve "${OPENOBSERVE_PORT}:5080" "${RUNTIME_DIR}/openobserve-port-forward.pid" "${RUNTIME_DIR}/openobserve-port-forward.log"
 start_forward '' "${NAMESPACE}" gateway-collector "${COLLECTOR_HTTP_PORT}:4318" "${RUNTIME_DIR}/collector-http-port-forward.pid" "${RUNTIME_DIR}/collector-http-port-forward.log"
 OPENOBSERVE_URL="http://127.0.0.1:${OPENOBSERVE_PORT}" \

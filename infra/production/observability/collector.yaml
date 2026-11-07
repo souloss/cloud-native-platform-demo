@@ -120,6 +120,13 @@ spec:
                 - source_labels: [__meta_kubernetes_service_name]
                   action: keep
                   regex: agent-collector-monitoring
+      prometheus/envoy-gateway:
+        config:
+          scrape_configs:
+            - job_name: envoy-gateway
+              scrape_interval: 30s
+              static_configs:
+                - targets: [envoy-gateway.envoy-gateway-system.svc.cluster.local:19001]
       k8s_cluster:
         auth_type: serviceAccount
         collection_interval: 30s
@@ -149,7 +156,7 @@ spec:
           processors: [memory_limiter, k8sattributes, attributes/redact, batch]
           exporters: [otlphttp/openobserve]
         metrics:
-          receivers: [otlp, prometheus/hubble, prometheus/keda, prometheus/otel, k8s_cluster]
+          receivers: [otlp, prometheus/hubble, prometheus/keda, prometheus/otel, prometheus/envoy-gateway, k8s_cluster]
           processors: [memory_limiter, k8sattributes, batch]
           exporters: [otlphttp/openobserve]
         logs:

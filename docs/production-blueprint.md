@@ -1,4 +1,4 @@
-# K3s + Cilium + OpenObserve 生产蓝图
+# K3s + Cilium + Envoy Gateway + OpenObserve 生产蓝图
 
 ## 2026-11 版本锁定
 
@@ -10,6 +10,7 @@
 | K3s | `v1.37.2+k3s1` |
 | Helm | `v4.3.1` |
 | Gateway API | `v1.7.0` |
+| Envoy Gateway | `v1.6.1` |
 | Cilium | `1.20.4` |
 | cert-manager | `v1.21.3` |
 | Kured | Chart `6.1.0` / App `1.23.0` |
@@ -18,7 +19,6 @@
 | OpenTelemetry Operator | Chart `0.129.0` / App `0.162.0` |
 | OTel Collector | `0.162.0` |
 | OpenObserve | Chart `1.1.4` / App `v1.1.2` |
-| Prometheus（本地示例可选） | `v3.16.0` |
 | PostgreSQL（本地示例可选） | `18.6-alpine3.24` |
 | MySQL LTS（本地示例可选） | `8.4.13` |
 | Redis（本地示例可选） | `8.8.4-alpine3.23` |
@@ -50,8 +50,8 @@ make production-storage
 ```
 
 `make up`、`make verify` 和 `make down` 只是旧入口的本地演示兼容别名。
-生产入口不会部署 PostgreSQL、MySQL、Redis、Nginx、Kite、示例应用或本地
-Prometheus，也不会自动生成生产 Secret。K3s 节点仍需按 SSH 节点模板逐台加入，
+生产入口不会部署 PostgreSQL、MySQL、Redis、Nginx、Kite、示例应用或独立
+Prometheus Server，也不会自动生成生产 Secret。K3s 节点仍需按 SSH 节点模板逐台加入，
 因为 API LB/VIP、云安全组、令牌和节点磁盘属于环境边界，不能由通用目录安全猜测。
 `production-platform` 安装的是集群级能力；KEDA 默认安装但不创建任何应用的
 `ScaledObject`。不需要事件扩缩容时可设 `INSTALL_KEDA=false`。GoFr 示例的
@@ -66,6 +66,7 @@ OpenObserve 查询、认证 Secret 和 `ScaledObject` 只通过单独的
 | `INSTALL_KURED` | `true` | 节点自动 reboot/drain；需由维护窗口和云节点策略支持 |
 | `INSTALL_SYSTEM_UPGRADE_CONTROLLER` | `true` | K3s 分阶段升级；不采用 SUC 时设为 `false` |
 | `INSTALL_KEDA` | `true` | 事件驱动扩缩容控制器；不使用 KEDA 时设为 `false` |
+| `INSTALL_ENVOY_GATEWAY` | `true` | Envoy Gateway controller；不需要 Gateway API 入口时设为 `false` |
 | `INSTALL_OPENOBSERVE` | `true` | 安装集群内 OpenObserve；使用托管后端时设为 `false` |
 | `INSTALL_STORAGE` | `true` | 管理/校验 Longhorn 或云 CSI；关闭时 OpenObserve 仍要求已有 `fast-rwo` |
 | `INSTALL_OTEL_OPERATOR` | `true` | 管理 OTel Collector CR；`APPLY_COLLECTOR=true` 时必须开启 |
@@ -135,19 +136,19 @@ k3d 演示仍然保留在 `make up`；`infra/production` 是云上部署的生�
 
 ## 结论和边界
 
-现有方案具备一个正确的方向：K3s、Cilium、Gateway API、metrics-server、KEDA
+现有方案具备一个正确的方向：K3s、Cilium、Envoy Gateway、Gateway API、metrics-server、KEDA
 和 OpenTelemetry 能组成轻量的 Kubernetes 平台。但它还不能直接称为生产集群：
 
 | 现状 | 生产要求 |
 | --- | --- |
 | k3d 的 1 个 server、2 个 agent | 3 个跨故障域的 K3s server，至少 2 个 worker |
-| Cilium 保留 kube-proxy，VXLAN 隧道 | 新集群启用 kube-proxy replacement；路由模式按云网络验证 |
-| 单独的 Gateway controller 与 Cilium 并存 | 生产只选择 Cilium Gateway API controller，避免多个 controller 争抢 GatewayClass |
+| Cilium CNI 使用 VXLAN 隧道 | 新集群启用 kube-proxy replacement；路由模式按云网络验证 |
+| 本地 k3d 使用 Cilium CNI + Envoy Gateway | 生产只选择 Envoy Gateway controller，Cilium 关闭 Gateway API 和 Envoy |
 | 单个 OTel Collector Deployment | OTel Operator 管理 DaemonSet Agent + 2 副本 Gateway |
-| 本地 PVC、单副本 Prometheus/OpenObserve | OpenObserve 分布式组件、对象存储、PostgreSQL 元数据和 NATS |
+| 本地 PVC、单副本 OpenObserve | OpenObserve 分布式组件、对象存储、PostgreSQL 元数据和 NATS |
 | 手工 reboot / 手工升级 | Kured 单节点 drain + System Upgrade Controller 分阶段升级 |
 | 明文演示 Secret | External Secrets、SOPS 或云密钥管理服务 |
-| HTTP/port-forward 入口 | cert-manager 签发 TLS，云 LB/BGP/LB-IPAM 提供稳定入口 |
+| HTTP/port-forward 入口 | cert-manager 签发 TLS，云 LoadBalancer 或外部 LB 提供稳定入口 |
 
 OpenObserve 统一承载本地演示和生产观测。生产数据面不是一个带 PVC 的单 Pod：日志、指标和
 链路数据应写入 S3 兼容对象存储，集群元数据写入 PostgreSQL，队列由 3 节点 NATS
@@ -165,9 +166,8 @@ Collector 的后端 Basic Auth 代替。生产环境应给 RUM 单独的组织�
 仓库中的 PostgreSQL、MySQL、Redis 和 Nginx 只属于本地业务示例：它们用于让
 `orders`、`catalog` 和 Vue 前端可以自包含运行，不是 K3s 平台的生产前置条件。
 生产环境应由业务团队选择托管数据库、CloudNativePG、缓存服务或静态站点/CDN，
-并从生产安装顺序中删除不需要的示例清单。Prometheus 同样是可选的兼容组件；
-OpenObserve 承载生产指标、日志和链路时，可以只保留 metrics-server 用于 HPA，
-不部署仓库中的本地 Prometheus Deployment。
+并从生产安装顺序中删除不需要的示例清单。项目不部署独立 Prometheus Server；
+OpenObserve 承载生产指标、日志和链路，同时保留 metrics-server 为 HPA 提供资源指标。
 
 仓库前端已经提供可选的 OpenObserve 适配器。生产构建设置
 `VITE_OBSERVABILITY_BACKEND=openobserve`、`VITE_OO_RUM_APPLICATION_ID`、
@@ -222,7 +222,9 @@ openobserveRum.init({
 1. 在第一台 server 写入 `infra/production/k3s/server-init.yaml`，安装固定版本的
    K3s；第二、第三台使用 `server-join.yaml` 加入同一个 API LB。worker 使用
    `agent.yaml`。真实 token 只放在 root-owned 文件或密钥管理服务中。
-2. 安装 Gateway API CRD 和 Cilium。Cilium 必须使用与创建集群时一致的
+2. 安装 Gateway API CRD 和 Cilium，确认 CNI 就绪后再安装 Envoy Gateway。Envoy
+   Gateway 是唯一的 Gateway API controller；Cilium 只负责 CNI、kube-proxy replacement、网络策略和
+   Hubble。Cilium 必须使用与创建集群时一致的
    `kubeProxyReplacement`、Pod CIDR、API 地址和路由模式。KPR 不是对现有集群的
    热开关，出现不兼容时应重建节点/集群，而不是在线改 values。
 3. 选择并安装持久化后端。选择 Longhorn 时，先应用
@@ -231,17 +233,17 @@ openobserveRum.init({
    `longhorn-storageclass.yaml` 创建 `fast-rwo`。选择云厂商 CSI 时跳过 Longhorn，
    但必须由云 CSI 提供同名且支持扩容、快照、替换节点和 `WaitForFirstConsumer` 的
    `fast-rwo` StorageClass。确认 `kubectl get storageclass fast-rwo` 成功后继续。
-4. 安装 cert-manager、Kured、System Upgrade Controller、云 LB 集成（或 Cilium
-   LB-IPAM/BGP）和 KEDA。应用工作负载
+4. 安装 cert-manager、Kured、System Upgrade Controller、云 LoadBalancer 集成和
+   KEDA。应用工作负载
    只保留一个扩缩容 owner：CPU/内存用原生 HPA，队列/lag/请求速率用 KEDA；同一个
    Deployment 不要同时绑定独立 HPA 和 KEDA ScaledObject。
 5. 安装 CloudNativePG Operator 并创建 PostgreSQL 集群，或使用托管 PostgreSQL。
    再应用 `infra/production/observability/namespace.yaml` 和外部 Secret，最后用 OpenObserve chart 安装
    `infra/production/observability/openobserve-values.yaml`。
 6. 安装 OpenTelemetry Operator，创建 `infra/production/observability/collector.yaml`。
-   应用 OTLP gRPC/HTTP 只指向 Gateway Service；Agent 读取每个节点的容器日志并把
+   应用 OTLP gRPC/HTTP 只指向 Envoy Gateway Service；Agent 读取每个节点的容器日志并把
    日志发给 Gateway。Gateway 负责脱敏、批处理、重试和导出到 OpenObserve。
-7. 应用生产版 Gateway、NetworkPolicy、ResourceQuota、PodDisruptionBudget、应用
+7. 应用生产版 Envoy Gateway、NetworkPolicy、ResourceQuota、PodDisruptionBudget、应用
    Deployment 和 KEDA 对象；应用 `infra/production/network/gateway.yaml`、
    `certificate.yaml` 和 `openobserve-route.yaml`。业务 Gateway 与 OpenObserve
    UI/摄入入口使用不同的 hostname，避免 `/api` 路由互相覆盖。
@@ -281,6 +283,8 @@ kubectl apply --server-side -f \
 helm upgrade --install cilium oci://quay.io/cilium/charts/cilium \
   --version 1.20.4 -n kube-system --create-namespace \
   -f infra/production/network/cilium-values.yaml
+helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+  --version v1.6.1 -n envoy-gateway-system --create-namespace
 # STORAGE_BACKEND=longhorn 时执行；云厂商 CSI 选择则跳过以下三步。
 kubectl apply -f infra/production/storage/namespace.yaml
 helm repo add longhorn https://charts.longhorn.io
@@ -344,29 +348,29 @@ Authorization、Cookie、邮箱和请求正文等敏感属性。
 
 ## Gateway controller 的选择
 
-仓库删除了 Envoy Gateway 的 Helm values 和资源，是因为生产集群只允许一个 Gateway API
-controller。当前 controller 是 Cilium，数据面仍然是 Cilium 管理的 Envoy，路径为：
+仓库只启用一个 Gateway API controller：Envoy Gateway。Cilium 关闭 Gateway API 和
+内置 Envoy，只保留 CNI、kube-proxy replacement、网络策略和 Hubble，路径为：
 
 ```text
-Gateway / HTTPRoute -> Cilium Gateway controller -> Cilium Envoy -> eBPF/KPR/Hubble
+Gateway / HTTPRoute -> Envoy Gateway controller -> Envoy proxy Service -> Cilium eBPF/KPR/Hubble
 ```
 
-因此删除的是第二套 controller，不是删除 Envoy 数据面，也不是否认 Envoy Gateway 的能力。
-Envoy Gateway 在独立的 controller、策略 API、扩展过滤器或多团队网关隔离成为硬性需求时仍然
-是合理选项；届时应关闭 Cilium Gateway API controller，保留 Envoy Gateway 作为唯一
-`GatewayClass` owner，并重新验收 CNI、Service、NetworkPolicy 和 Hubble。两者不能在同一
-集群同时管理相同的 GatewayClass/HTTPRoute。
+`infra/production/network/gateway.yaml` 中的 `GatewayClass` 使用
+`gateway.envoyproxy.io/gatewayclass-controller`，并通过 `EnvoyProxy` 参数将生产
+Service 设置为 `LoadBalancer`。本地 k3d 使用同一套 Gateway API 资源，但将 Envoy
+Service 设置为 `NodePort`，再由脚本映射到本机端口。Cilium 和 Envoy Gateway 不能在同一
+集群同时管理相同的 `GatewayClass`/`HTTPRoute`。
 
 metrics-server 只服务 Kubernetes HPA 的 CPU/内存指标，不是生产观测后端。OpenObserve
 承载业务指标、日志、链路和 RUM；HPA/KEDA 的扩缩容信号仍应单独验证其时效性、冷却期
 和最小副本数。
 
-OpenObserve 提供 PromQL 兼容查询 API，所以 KEDA 可以直接查询 OpenObserve；这不等于它
-完全复制了 Prometheus Server 的所有运行时语义。生产基线可以删除 Prometheus Server，
-但必须保留 `metrics-server`（HPA 的 resource metrics API）和 OTel Collector（指标采集、
-批处理、重试、导出）。只有在依赖 Prometheus 原生告警/recording rule、Prometheus TSDB
-隔离保留或现有 Prometheus 生态时，才额外部署 Prometheus Server。它是兼容选项，不是
-OpenObserve 的前置依赖。
+OpenObserve 提供 PromQL 兼容查询 API，所以 KEDA 可以直接查询 OpenObserve。项目不部署
+Prometheus Server，但保留 Prometheus receiver/exporter 作为指标协议适配：GoFr、Cilium、
+Hubble、KEDA 和 Envoy Gateway 的指标由 OTel Collector 采集后写入 OpenObserve。生产基线
+必须保留 `metrics-server`（HPA 的 resource metrics API）和 OTel Collector（指标采集、
+批处理、重试、导出）。只有已有系统明确依赖 Prometheus 原生告警或独立 TSDB 时，才应由
+平台另行部署 Prometheus Server。
 
 ## OpenObserve Dashboard 基线
 
@@ -457,7 +461,7 @@ core profile 默认清理仓库管理的旧版示例工作负载 Dashboard；若
 ## 与仓库清单的对应关系
 
 - K3s 配置模板：`infra/production/k3s/`
-- Cilium KPR、Gateway API、Hubble 和 WireGuard：`infra/production/network/`
+- Cilium KPR、CNI、Hubble、WireGuard 和 Envoy Gateway API 资源：`infra/production/network/`
 - 可选 CSI 存储后端和 `fast-rwo` StorageClass：`infra/production/storage/`
 - OpenObserve 分布式 values 和外部 Secret 模板：`infra/production/observability/openobserve-*`
 - OTel Operator Agent/Gateway：`infra/production/observability/collector.yaml`

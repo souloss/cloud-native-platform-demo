@@ -20,7 +20,7 @@ help:
 		'  verify          demo-verify 的兼容别名' \
 		'  status          查看节点、工作负载、Gateway API 和 HPA 状态' \
 		'  resource-status 查看节点和 Pod 的 CPU/内存使用量' \
-		'  network-status  查看 Cilium Gateway API 状态' \
+		'  network-status  查看 Cilium CNI、Envoy Gateway 和 Gateway 状态' \
 		'  logs            持续查看主要应用和 Gateway 日志' \
 		'  down            demo-down 的兼容别名' \
 		'' \
@@ -100,12 +100,15 @@ resource-status:
 
 network-status:
 	kubectl -n kube-system get pods -l k8s-app=cilium -o wide
-	kubectl -n kube-system get pods -l k8s-app=cilium-envoy -o wide
-	kubectl -n gofr-demo get gateway,httproute,svc -l gateway.networking.k8s.io/gateway-name=public
+	kubectl -n envoy-gateway-system get deploy,pods -o wide
+	kubectl -n gofr-demo get gateway,httproute
+	kubectl get service -A \
+		-l gateway.envoyproxy.io/owning-gateway-name=public,gateway.envoyproxy.io/owning-gateway-namespace=gofr-demo
 	kubectl get gatewayclass
 
 logs:
 	kubectl -n kube-system logs ds/cilium --tail=80
+	kubectl -n envoy-gateway-system logs deploy/envoy-gateway --tail=80
 	kubectl -n gofr-demo logs deploy/orders --tail=40
 	kubectl -n gofr-demo logs deploy/catalog --tail=40
 

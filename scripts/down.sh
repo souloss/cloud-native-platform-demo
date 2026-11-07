@@ -28,7 +28,6 @@ stop_forward() {
 for pidfile in \
   "${RUNTIME_DIR}/port-forward.pid" \
   "${RUNTIME_DIR}/kite-port-forward.pid" \
-  "${RUNTIME_DIR}/prometheus-port-forward.pid" \
   "${RUNTIME_DIR}/openobserve-port-forward.pid" \
   "${RUNTIME_DIR}/collector-http-port-forward.pid" \
   "${RUNTIME_DIR}/collector-port-forward.pid"; do
@@ -45,8 +44,10 @@ if [[ "${MODE:-k3d}" == "k3d" ]] && command -v k3d >/dev/null; then
   exit 0
 fi
 "${K[@]}" delete namespace gofr-demo --ignore-not-found
-"${K[@]}" delete gatewayclass cilium --ignore-not-found
+"${K[@]}" delete gatewayclass envoy-gateway cilium --ignore-not-found
 if command -v helm >/dev/null; then
+  helm uninstall envoy-gateway -n envoy-gateway-system --ignore-not-found 2>/dev/null || true
   helm uninstall cilium -n kube-system --ignore-not-found 2>/dev/null || true
 fi
+"${K[@]}" delete namespace envoy-gateway-system --ignore-not-found
 if command -v k3s-uninstall.sh >/dev/null; then "${SUDO[@]}" k3s-uninstall.sh; fi

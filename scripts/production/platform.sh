@@ -10,6 +10,7 @@ KURED_VERSION="${KURED_VERSION:-6.1.0}"
 SYSTEM_UPGRADE_CONTROLLER_VERSION="${SYSTEM_UPGRADE_CONTROLLER_VERSION:-110.0.0}"
 KEDA_VERSION="${KEDA_VERSION:-2.21.0}"
 OTEL_OPERATOR_VERSION="${OTEL_OPERATOR_VERSION:-0.129.0}"
+ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.6.1}"
 OPENOBSERVE_CHART_VERSION="${OPENOBSERVE_CHART_VERSION:-1.1.4}"
 STORAGE_BACKEND="${STORAGE_BACKEND:-cloud-csi}"
 STORAGE_CLASS="${STORAGE_CLASS:-fast-rwo}"
@@ -33,6 +34,7 @@ INSTALL_SYSTEM_UPGRADE_CONTROLLER="${INSTALL_SYSTEM_UPGRADE_CONTROLLER:-true}"
 INSTALL_OTEL_OPERATOR="${INSTALL_OTEL_OPERATOR:-true}"
 INSTALL_OPENOBSERVE="${INSTALL_OPENOBSERVE:-true}"
 INSTALL_KEDA="${INSTALL_KEDA:-true}"
+INSTALL_ENVOY_GATEWAY="${INSTALL_ENVOY_GATEWAY:-true}"
 ENABLE_HUBBLE="${ENABLE_HUBBLE:-true}"
 ENABLE_HUBBLE_EVENTS="${ENABLE_HUBBLE_EVENTS:-${APPLY_HUBBLE_EVENTS}}"
 CILIUM_K8S_SERVICE_HOST="${CILIUM_K8S_SERVICE_HOST:-}"
@@ -58,6 +60,8 @@ command -v helm >/dev/null || die "helm is required"
   || die "APPLY_HUBBLE_EVENTS=true requires ENABLE_HUBBLE=true"
 [[ "${APPLY_COLLECTOR}" != true || "${INSTALL_OTEL_OPERATOR}" == true ]] \
   || die "APPLY_COLLECTOR=true requires INSTALL_OTEL_OPERATOR=true"
+[[ "${APPLY_EDGE_RESOURCES}" != true || "${INSTALL_ENVOY_GATEWAY}" == true ]] \
+  || die "APPLY_EDGE_RESOURCES=true requires INSTALL_ENVOY_GATEWAY=true"
 
 [[ "${KUBECONFIG:-}" != *k3d* ]] || die "production-platform refuses a k3d kubeconfig"
 kubectl cluster-info >/dev/null || die "Kubernetes API is not reachable"
@@ -112,6 +116,16 @@ cilium_args=(
 helm "${cilium_args[@]:1}"
 kubectl -n kube-system rollout status daemonset/cilium --timeout=600s
 kubectl -n kube-system rollout status deployment/cilium-operator --timeout=600s
+
+if [[ "${INSTALL_ENVOY_GATEWAY}" == true ]]; then
+  ensure_namespace envoy-gateway-system baseline
+  helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+    --version "${ENVOY_GATEWAY_VERSION}" \
+    --namespace envoy-gateway-system \
+    --create-namespace \
+    -f infra/production/network/envoy-gateway-values.yaml
+  kubectl -n envoy-gateway-system rollout status deployment/envoy-gateway --timeout=600s
+fi
 
 if [[ "${INSTALL_OPENOBSERVE}" == true || "${APPLY_COLLECTOR}" == true ]]; then
   ensure_namespace observability baseline
@@ -243,6 +257,10 @@ fi
 
 if [[ "${APPLY_EDGE_RESOURCES}" == true ]]; then
   [[ "${APPLY_ISSUERS}" == true ]] || die "APPLY_EDGE_RESOURCES requires APPLY_ISSUERS=true"
+  # Remove the old Cilium Gateway API objects during migration. Cilium remains
+  # installed as the CNI and eBPF Service data plane only.
+  kubectl delete gatewayclass cilium --ignore-not-found
+  kubectl -n kube-system delete service cilium-envoy cilium-envoy-preview --ignore-not-found
   kubectl apply -f infra/production/network/gateway.yaml \
     -f infra/production/network/certificate.yaml \
     -f infra/production/network/openobserve-route.yaml
@@ -258,4 +276,4 @@ echo "生产平台安装完成"
 kubectl get nodes -o wide
 kubectl get storageclass "${STORAGE_CLASS}"
 kubectl get helmreleases.helm.cattle.io -A 2>/dev/null || true
-kubectl get pods -A | grep -E 'cilium|cert-manager|kured|system-upgrade|keda|opentelemetry|openobserve' || true
+kubectl get pods -A | grep -E 'cilium|envoy-gateway|cert-manager|kured|system-upgrade|keda|opentelemetry|openobserve' || true

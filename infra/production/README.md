@@ -2,10 +2,11 @@
 
 This directory contains platform and production integration contracts. It does
 not contain the demo application's PostgreSQL, MySQL, Redis, Nginx, Kite or
-Prometheus manifests.
+standalone Prometheus Server manifests. Prometheus-format exporters remain part
+of the Cilium, GoFr and OTel integrations.
 
 - `k3s/`: per-node K3s configuration templates; install them over SSH.
-- `network/`: production Cilium, Gateway API, TLS and OpenObserve routes.
+- `network/`: production Cilium CNI, Envoy Gateway, Gateway API, TLS and OpenObserve routes.
 - `platform/`: cert-manager, Kured, System Upgrade Controller, KEDA and OTel
   Operator values, cluster-scoped resources and feature flags.
 - `observability/`: production OpenObserve values, external Secret contracts

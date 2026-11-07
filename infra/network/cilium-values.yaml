@@ -1,21 +1,20 @@
-# Cilium 是 k3d 演示的集群 CNI 和服务数据面。
+# Cilium 是 k3d 演示的集群 CNI、eBPF 服务数据面和 Hubble。
 # 集群创建时已关闭 Flannel 和 k3s 网络策略。
 operator:
   replicas: 1
 ipam:
   mode: kubernetes
-# Gateway API requires kube-proxy replacement. scripts/up.sh creates k3d
-# nodes with kube-proxy disabled and injects the server address below.
+# scripts/up.sh creates k3d nodes with kube-proxy disabled and injects the
+# server address below; Cilium supplies the eBPF Service data plane.
 kubeProxyReplacement: true
 # scripts/up.sh sets these values from the current k3d server address, so the
 # values file remains valid when Docker allocates a different bridge subnet.
 routingMode: tunnel
 tunnelProtocol: vxlan
-l7Proxy: true
+l7Proxy: false
 gatewayAPI:
-  # Cilium is the single Gateway API controller for this blueprint.
-  enabled: true
-  enableAppProtocol: true
+  # Envoy Gateway is the only Gateway API controller in this blueprint.
+  enabled: false
 hubble:
   enabled: true
   relay:
@@ -29,7 +28,8 @@ hubble:
       - tcp
       - flow
       - icmp
-      - httpV2
+# Expose Prometheus-format endpoints for OTel Collector; this does not deploy
+# a Prometheus Server.
 prometheus:
   enabled: true
 operatorPrometheus:
