@@ -26,19 +26,24 @@ Cloud Native Platform Demo 是一个刻意保持小而完整、同时按生产�
 
 ## 请求与信号路径
 
-```text
-浏览器（Vue + 会话回放）
-  -> Envoy Gateway / Gateway API
-    -> web（静态界面）
-    -> orders -> PostgreSQL
-              -> catalog -> MySQL
-                        -> Redis 缓存
+```mermaid
+flowchart LR
+    browser["浏览器<br/>Vue + 会话回放"] --> gateway["Envoy Gateway<br/>Gateway API"]
+    gateway --> web["web<br/>静态界面"]
+    gateway --> orders["orders"]
+    orders --> postgres[(PostgreSQL)]
+    orders --> catalog["catalog"]
+    catalog --> mysql[(MySQL)]
+    catalog --> redis[(Redis 缓存)]
 
-浏览器 OTLP/HTTP -> Envoy Gateway -> OpenTelemetry Collector -> OpenObserve
-GoFr OTLP/gRPC -> OpenTelemetry Collector -> OTLP 后端
-节点 hostmetrics/组件 Prometheus endpoint -> OTel Collector -> OpenObserve
-Pod 网络流量 -> Cilium/Hubble
-集群资源/事件 -> Kite
+    browser -. "OTLP/HTTP" .-> collector["OpenTelemetry Collector"]
+    orders -. "OTLP/gRPC" .-> collector
+    catalog -. "OTLP/gRPC" .-> collector
+    collector --> openobserve["OpenObserve"]
+    metrics["节点 hostmetrics<br/>组件 Prometheus endpoint"] --> collector
+    cilium["Cilium CNI + Hubble"] -. "Pod 网络流量" .-> gateway
+    cilium -. "Pod 网络流量" .-> orders
+    kite["Kite"] -. "集群资源 / 事件" .-> cilium
 ```
 
 `orders` 调用 `catalog` 时会传播 W3C trace context，因此一笔订单请求可以作为端到端

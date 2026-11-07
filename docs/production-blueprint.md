@@ -327,12 +327,15 @@ OpenObserve chart 的 `postgres.enabled` 在本蓝图中关闭。必须在安装
 
 ## 遥测管道
 
-```text
-应用 OTLP -> OTel Gateway (2 replicas) -> OpenObserve router -> ingester -> S3
-节点日志 -> OTel Agent (DaemonSet) -> OTel Gateway
-Cilium/Hubble metrics -----------------> OTel Gateway -> OpenObserve metrics
-Hubble flow detail -> Hubble Relay（按需部署 UI，专用网络视图）
-浏览器 RUM/Replay -> OpenObserve RUM hostname（独立 client token）
+```mermaid
+flowchart LR
+    app["应用 OTLP"] --> otel_gateway["OTel Gateway<br/>2 replicas"]
+    logs["节点日志"] --> otel_agent["OTel Agent<br/>DaemonSet"] --> otel_gateway
+    cilium_metrics["Cilium / Hubble metrics"] --> otel_gateway
+    otel_gateway --> router["OpenObserve Router"] --> ingester["Ingester"] --> s3[(S3 兼容对象存储)]
+    otel_gateway --> oo_metrics["OpenObserve Metrics"]
+    hubble_flow["Hubble flow detail"] --> relay["Hubble Relay<br/>可选 UI"]
+    rum["浏览器 RUM / Replay<br/>独立 client token"] --> oo_rum["OpenObserve RUM hostname"]
 ```
 
 Gateway 的 OTLP HTTP exporter 使用
@@ -351,8 +354,11 @@ Authorization、Cookie、邮箱和请求正文等敏感属性。
 仓库只启用一个 Gateway API controller：Envoy Gateway。Cilium 关闭 Gateway API 和
 内置 Envoy，只保留 CNI、kube-proxy replacement、网络策略和 Hubble，路径为：
 
-```text
-Gateway / HTTPRoute -> Envoy Gateway controller -> Envoy proxy Service -> Cilium eBPF/KPR/Hubble
+```mermaid
+flowchart LR
+    route["Gateway / HTTPRoute"] --> controller["Envoy Gateway controller"]
+    controller --> proxy["Envoy proxy Service"]
+    proxy --> cilium["Cilium eBPF / KPR / Hubble"]
 ```
 
 `infra/production/network/gateway.yaml` 中的 `GatewayClass` 使用

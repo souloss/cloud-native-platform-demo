@@ -13,21 +13,24 @@ CNI、eBPF 服务数据面和 Hubble，用 Envoy Gateway 提供 Gateway API 入�
 
 ## 架构
 
-```text
-浏览器（Vue + Session Replay）
-          │
-          ▼
-   Envoy Gateway API
-          │
-    ┌─────┴─────┐
-    ▼           ▼
-  web       orders ──────► catalog
-                            │
-                 PostgreSQL / MySQL / Redis
+```mermaid
+flowchart LR
+    browser["浏览器<br/>Vue + Session Replay"] --> gateway["Envoy Gateway API"]
+    gateway --> web["web"]
+    gateway --> orders["orders"]
+    orders --> catalog["catalog"]
+    orders --> postgres[(PostgreSQL)]
+    catalog --> mysql[(MySQL)]
+    catalog --> redis[(Redis)]
 
-浏览器与 GoFr 服务 ── OTLP ──► OpenTelemetry Collector ──► OpenObserve
-K3s 网络 ───────────────► Cilium CNI / Hubble
-集群资源 ───────────────► Kite
+    browser -. "OTLP" .-> collector["OpenTelemetry Collector"]
+    orders -. "OTLP" .-> collector
+    catalog -. "OTLP" .-> collector
+    collector --> openobserve["OpenObserve"]
+
+    cilium["Cilium CNI<br/>eBPF Service Data Plane + Hubble"] -. "Pod 网络" .-> gateway
+    cilium -. "Pod 网络" .-> orders
+    kite["Kite"] -. "集群资源" .-> cilium
 ```
 
 一次订单请求会经过 Gateway、`orders` 和 `catalog`，并访问 PostgreSQL、MySQL 和
